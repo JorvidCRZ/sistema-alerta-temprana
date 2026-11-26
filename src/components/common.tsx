@@ -386,4 +386,3 @@ export function formatearNivelPorcentaje(valor: number) {
 export function HelpHint({ text }: { text: string }) {
   return <span className="help-hint" title={text} aria-label={text}>?</span>;
 }
-
