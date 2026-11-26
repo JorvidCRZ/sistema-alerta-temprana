@@ -1,0 +1,10 @@
+{
+  "description": "A web platform for secondary education tutors to monitor academic performance and attendance, identifying at-risk students and facilitating timely support.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

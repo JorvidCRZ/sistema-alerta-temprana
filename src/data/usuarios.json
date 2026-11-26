@@ -1,0 +1,42 @@
+[
+  {
+    "id": "USR-001",
+    "rol": "Tutor",
+    "nombre": "Juan Pérez",
+    "especialidad": "Tutoría y orientación educativa",
+    "correo": "juan.perez@saco.edu.pe",
+    "clave": "Tutor123"
+  },
+  {
+    "id": "USR-002",
+    "rol": "Docente",
+    "nombre": "Claudia Rojas",
+    "especialidad": "Matemática",
+    "correo": "claudia.rojas@saco.edu.pe",
+    "clave": "Docente123"
+  },
+  {
+    "id": "USR-003",
+    "rol": "Coordinacion",
+    "nombre": "Martín Vega",
+    "especialidad": "Coordinación académica",
+    "correo": "martin.vega@saco.edu.pe",
+    "clave": "Coord123"
+  },
+  {
+    "id": "USR-004",
+    "rol": "Tutor",
+    "nombre": "Rosa Salazar",
+    "especialidad": "Tutoría y orientación educativa",
+    "correo": "rosa.salazar@saco.edu.pe",
+    "clave": "Tutor456"
+  },
+  {
+    "id": "USR-005",
+    "rol": "Docente",
+    "nombre": "Luis Mendoza",
+    "especialidad": "Comunicación",
+    "correo": "luis.mendoza@saco.edu.pe",
+    "clave": "Docente456"
+  }
+]

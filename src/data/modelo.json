@@ -1,0 +1,23 @@
+{
+  "umbrales": {
+    "medio": 0.15,
+    "alto": 0.4064
+  },
+  "metricas_alto": {
+    "recall": 0.8,
+    "precision": 0.8,
+    "f1": 0.8
+  },
+  "flujo": [
+    "El docente registra información",
+    "El sistema reúne los datos",
+    "Se calcula el nivel de riesgo",
+    "Se muestra el semáforo",
+    "El tutor revisa y decide"
+  ],
+  "limitaciones": [
+    "Los datos del prototipo son de demostración.",
+    "El nivel se actualiza aquí solo para mostrar cómo funcionaría con nueva información.",
+    "Los patrones de solución son orientativos y no prueban la efectividad de una acción."
+  ]
+}

@@ -1,0 +1,197 @@
+[
+  {
+    "alumno": {
+      "id_matricula": "MAT-0324",
+      "nombre": "Ana López",
+      "codigo": "EST-0324",
+      "promedios_bimestre": { "B1": 12, "B2": 11 },
+      "inasistencias": 5,
+      "apoderado": { "nombres": "Rosa Martínez", "parentesco": "Madre" }
+    },
+    "riesgo": {
+      "probabilidad": 0.62,
+      "nivel": "Alto",
+      "factores": "Rendimiento en B1 y B2 (0.31 puntos); Asistencia en B1 y B2 (0.22 puntos); Contexto del alumno y la familia (0.09 puntos); Conducta tutoría y familia (0.07 puntos); Pensiones (0.03 puntos); Bienestar (-0.02 puntos)"
+    },
+    "observaciones_conducta": [
+      { "fecha": "2026-09-18", "tipo": "Leve", "deriva_a_tutor": true }
+    ],
+    "tutorias": [
+      { "fecha": "2026-09-22", "motivo": "Bajo rendimiento", "accion": "Plan de recuperación", "derivacion": "Ninguna", "mejoro_sim": false }
+    ],
+    "derivaciones": [
+      { "id": "DER-001", "fecha": "2026-09-25", "curso": "Matemática", "motivo": "Inasistencias", "estado": "Pendiente", "fecha_revision": null, "accion_tutor": "", "docente": "Claudia Rojas", "comentario": "Se observan inasistencias reiteradas que requieren revisión." }
+    ],
+    "asistencia_reciente": [
+      { "fecha": "2026-10-06", "estado": "Presente", "hora_ingreso": "07:50", "medio": "Lector IoT" },
+      { "fecha": "2026-10-05", "estado": "Presente", "hora_ingreso": "07:52", "medio": "Lector IoT" },
+      { "fecha": "2026-10-02", "estado": "Falta injustificada", "hora_ingreso": null, "medio": "Manual" },
+      { "fecha": "2026-10-01", "estado": "Presente", "hora_ingreso": "07:48", "medio": "Lector IoT" },
+      { "fecha": "2026-09-30", "estado": "Presente", "hora_ingreso": "07:55", "medio": "Lector IoT" }
+    ],
+    "notas_por_curso": [
+      { "curso": "Matemática", "B1": 11, "B2": 9 },
+      { "curso": "Comunicación", "B1": 13, "B2": 12 },
+      { "curso": "Ciencia y Tecnología", "B1": 12, "B2": 11 }
+    ],
+    "calificaciones": [],
+    "contactos": []
+  },
+  {
+    "alumno": {
+      "id_matricula": "MAT-0325",
+      "nombre": "Carlos Ruiz",
+      "codigo": "EST-0325",
+      "promedios_bimestre": { "B1": 14, "B2": 13 },
+      "inasistencias": 3,
+      "apoderado": { "nombres": "Elena Ruiz", "parentesco": "Madre" }
+    },
+    "riesgo": { "probabilidad": 0.28, "nivel": "Medio", "factores": "Rendimiento en B1 y B2 (0.16 puntos); Asistencia en B1 y B2 (0.12 puntos); Contexto del alumno y la familia (0.04 puntos)" },
+    "observaciones_conducta": [],
+    "tutorias": [],
+    "derivaciones": [
+      { "id": "DER-002", "fecha": "2026-09-29", "curso": "Matemática", "motivo": "Bajo rendimiento", "estado": "Revisada", "fecha_revision": "2026-10-03", "accion_tutor": "", "docente": "Claudia Rojas", "cambio_estado": true, "comentario": "El desempeño reciente requiere acompañamiento." }
+    ],
+    "asistencia_reciente": [
+      { "fecha": "2026-10-06", "estado": "Tardanza", "hora_ingreso": "08:04", "medio": "Lector IoT" }
+    ],
+    "notas_por_curso": [
+      { "curso": "Matemática", "B1": 14, "B2": 12 },
+      { "curso": "Comunicación", "B1": 14, "B2": 14 }
+    ],
+    "calificaciones": [],
+    "contactos": []
+  },
+  {
+    "alumno": {
+      "id_matricula": "MAT-0326",
+      "nombre": "María Torres",
+      "codigo": "EST-0326",
+      "promedios_bimestre": { "B1": 14, "B2": 14 },
+      "inasistencias": 2,
+      "apoderado": { "nombres": "Luis Torres", "parentesco": "Padre" }
+    },
+    "riesgo": { "probabilidad": 0.19, "nivel": "Medio", "factores": "Asistencia en B1 y B2 (0.11 puntos); Bienestar (0.08 puntos)" },
+    "observaciones_conducta": [
+      { "fecha": "2026-09-28", "tipo": "Socioemocional", "deriva_a_tutor": true }
+    ],
+    "tutorias": [],
+    "derivaciones": [],
+    "asistencia_reciente": [],
+    "notas_por_curso": [
+      { "curso": "Matemática", "B1": 14, "B2": 14 },
+      { "curso": "Comunicación", "B1": 15, "B2": 14 }
+    ],
+    "calificaciones": [],
+    "contactos": []
+  },
+  {
+    "alumno": {
+      "id_matricula": "MAT-0327",
+      "nombre": "Diego Salazar",
+      "codigo": "EST-0327",
+      "promedios_bimestre": { "B1": 16, "B2": 17 },
+      "inasistencias": 0,
+      "apoderado": { "nombres": "Paola Salazar", "parentesco": "Madre" }
+    },
+    "riesgo": { "probabilidad": 0.08, "nivel": "Bajo", "factores": "Rendimiento en B1 y B2 (-0.04 puntos); Asistencia en B1 y B2 (0.01 puntos)" },
+    "observaciones_conducta": [
+      { "fecha": "2026-09-30", "tipo": "Positiva", "deriva_a_tutor": false }
+    ],
+    "tutorias": [],
+    "derivaciones": [],
+    "asistencia_reciente": [],
+    "notas_por_curso": [
+      { "curso": "Matemática", "B1": 16, "B2": 18 },
+      { "curso": "Comunicación", "B1": 16, "B2": 17 }
+    ],
+    "calificaciones": [],
+    "contactos": []
+  },
+  {
+    "alumno": {
+      "id_matricula": "MAT-0328",
+      "nombre": "Lucía Mendoza",
+      "codigo": "EST-0328",
+      "promedios_bimestre": { "B1": 16, "B2": 16 },
+      "inasistencias": 1,
+      "apoderado": { "nombres": "César Mendoza", "parentesco": "Padre" }
+    },
+    "riesgo": { "probabilidad": 0.09, "nivel": "Bajo", "factores": "Asistencia en B1 y B2 (0.04 puntos); Rendimiento en B1 y B2 (-0.02 puntos)" },
+    "observaciones_conducta": [],
+    "tutorias": [],
+    "derivaciones": [],
+    "asistencia_reciente": [],
+    "notas_por_curso": [
+      { "curso": "Matemática", "B1": 16, "B2": 16 },
+      { "curso": "Comunicación", "B1": 17, "B2": 16 }
+    ],
+    "calificaciones": [],
+    "contactos": []
+  },
+  {
+    "alumno": {
+      "id_matricula": "MAT-0329",
+      "nombre": "Joaquín Ramos",
+      "codigo": "EST-0329",
+      "promedios_bimestre": { "B1": 14, "B2": 15 },
+      "inasistencias": 1,
+      "apoderado": { "nombres": "Sonia Ramos", "parentesco": "Madre" }
+    },
+    "riesgo": { "probabilidad": 0.1, "nivel": "Bajo", "factores": "Asistencia en B1 y B2 (0.04 puntos); Rendimiento en B1 y B2 (-0.01 puntos)" },
+    "observaciones_conducta": [],
+    "tutorias": [],
+    "derivaciones": [],
+    "asistencia_reciente": [],
+    "notas_por_curso": [
+      { "curso": "Matemática", "B1": 14, "B2": 15 },
+      { "curso": "Comunicación", "B1": 15, "B2": 15 }
+    ],
+    "calificaciones": [],
+    "contactos": []
+  },
+  {
+    "alumno": {
+      "id_matricula": "MAT-0330",
+      "nombre": "Valeria Castro",
+      "codigo": "EST-0330",
+      "promedios_bimestre": { "B1": 17, "B2": 17 },
+      "inasistencias": 0,
+      "apoderado": { "nombres": "Mario Castro", "parentesco": "Padre" }
+    },
+    "riesgo": { "probabilidad": 0.06, "nivel": "Bajo", "factores": "Rendimiento en B1 y B2 (-0.04 puntos); Conducta tutoría y familia (-0.02 puntos)" },
+    "observaciones_conducta": [
+      { "fecha": "2026-09-26", "tipo": "Positiva", "deriva_a_tutor": false }
+    ],
+    "tutorias": [],
+    "derivaciones": [],
+    "asistencia_reciente": [],
+    "notas_por_curso": [
+      { "curso": "Matemática", "B1": 17, "B2": 17 },
+      { "curso": "Comunicación", "B1": 17, "B2": 18 }
+    ],
+    "calificaciones": [],
+    "contactos": []
+  },
+  {
+    "alumno": {
+      "id_matricula": "MAT-0331",
+      "nombre": "Mateo Silva",
+      "codigo": "EST-0331",
+      "promedios_bimestre": { "B1": 16, "B2": 16 },
+      "inasistencias": 1,
+      "apoderado": { "nombres": "Adriana Silva", "parentesco": "Madre" }
+    },
+    "riesgo": { "probabilidad": 0.11, "nivel": "Bajo", "factores": "Asistencia en B1 y B2 (0.04 puntos); Rendimiento en B1 y B2 (-0.01 puntos)" },
+    "observaciones_conducta": [],
+    "tutorias": [],
+    "derivaciones": [],
+    "asistencia_reciente": [],
+    "notas_por_curso": [
+      { "curso": "Matemática", "B1": 16, "B2": 16 },
+      { "curso": "Comunicación", "B1": 16, "B2": 16 }
+    ],
+    "calificaciones": [],
+    "contactos": []
+  }
+]

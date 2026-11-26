@@ -1,0 +1,49 @@
+[
+  {
+    "motivo": "Bajo rendimiento",
+    "acciones": [
+      { "nombre": "Plan de recuperación", "pct_mejoro": 72, "n_casos": 25, "variacion_media": 2.6 },
+      { "nombre": "Seguimiento semanal", "pct_mejoro": 68, "n_casos": 22, "variacion_media": 2.3 },
+      { "nombre": "Compromiso con el estudiante", "pct_mejoro": 59, "n_casos": 17, "variacion_media": 1.8 }
+    ]
+  },
+  {
+    "motivo": "Inasistencias",
+    "acciones": [
+      { "nombre": "Citación al apoderado", "pct_mejoro": 66, "n_casos": 18, "variacion_media": 1.9 },
+      { "nombre": "Seguimiento semanal", "pct_mejoro": 61, "n_casos": 16, "variacion_media": 1.7 },
+      { "nombre": "Compromiso con el estudiante", "pct_mejoro": 54, "n_casos": 13, "variacion_media": 1.4 }
+    ]
+  },
+  {
+    "motivo": "Conducta",
+    "acciones": [
+      { "nombre": "Orientación", "pct_mejoro": 74, "n_casos": 14, "variacion_media": 2.2 },
+      { "nombre": "Compromiso con el estudiante", "pct_mejoro": 69, "n_casos": 12, "variacion_media": 2 },
+      { "nombre": "Seguimiento semanal", "pct_mejoro": 63, "n_casos": 11, "variacion_media": 1.7 }
+    ]
+  },
+  {
+    "motivo": "Situación familiar",
+    "acciones": [
+      { "nombre": "Citación al apoderado", "pct_mejoro": 62, "n_casos": 12, "variacion_media": 1.7 },
+      { "nombre": "Orientación", "pct_mejoro": 58, "n_casos": 10, "variacion_media": 1.5 },
+      { "nombre": "Seguimiento semanal", "pct_mejoro": 51, "n_casos": 9, "variacion_media": 1.2 }
+    ]
+  },
+  {
+    "motivo": "Socioemocional",
+    "acciones": [
+      { "nombre": "Orientación", "pct_mejoro": 67, "n_casos": 17, "variacion_media": 1.9 },
+      { "nombre": "Seguimiento semanal", "pct_mejoro": 64, "n_casos": 15, "variacion_media": 1.7 },
+      { "nombre": "Citación al apoderado", "pct_mejoro": 57, "n_casos": 12, "variacion_media": 1.4 }
+    ]
+  },
+  {
+    "motivo": "Orientación vocacional",
+    "acciones": [
+      { "nombre": "Orientación", "pct_mejoro": 76, "n_casos": 9, "variacion_media": 2.3 },
+      { "nombre": "Compromiso con el estudiante", "pct_mejoro": 64, "n_casos": 7, "variacion_media": 1.8 }
+    ]
+  }
+]

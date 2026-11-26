@@ -1,0 +1,14 @@
+[
+  {
+    "id": "DOC-001",
+    "usuario_id": "USR-002",
+    "grado": "3.º Secundaria",
+    "seccion": "A"
+  },
+  {
+    "id": "DOC-002",
+    "usuario_id": "USR-005",
+    "grado": "3.º Secundaria",
+    "seccion": "A"
+  }
+]
