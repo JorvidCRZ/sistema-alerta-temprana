@@ -368,19 +368,20 @@ export function PageHeading({
   );
 }
 
+export function formatearEntero(valor: number) {
+  return Math.round(Number(valor) || 0);
+}
+
 export function calcularTendencia(bimestre1: number, bimestre2: number) {
-  const variacion = bimestre2 - bimestre1;
-  if (variacion <= -1.5) return "Descendente";
-  if (variacion < -0.5) return "Leve descenso";
-  if (variacion < 0.5) return "Estable";
+  const variacion = Math.round(bimestre2) - Math.round(bimestre1);
+  if (variacion <= -2) return "Descendente";
+  if (variacion < 0) return "Leve descenso";
+  if (variacion === 0) return "Estable";
   return "Ascendente";
 }
 
 export function formatearNivelPorcentaje(valor: number) {
-  return `${(valor * 100).toLocaleString("es-PE", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })} %`;
+  return `${Math.round(valor * 100)} %`;
 }
 
 export function HelpHint({ text }: { text: string }) {
