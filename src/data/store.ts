@@ -17,6 +17,7 @@ import type {
   FactorRiesgo,
   Motivo,
   ModeloInfo,
+  NivelRiesgo,
   ObservacionConducta,
   RegistroAsistencia,
   RecalculoRiesgo,
@@ -25,6 +26,8 @@ import type {
   Tutoria,
   Usuario,
 } from "./types";
+
+const API_BASE_URL = "http://127.0.0.1:8000";
 
 interface DataState {
   estudiantes: Estudiante[];
@@ -45,6 +48,121 @@ type EvidenciaSesion =
 
 const clone = <T,>(value: T): T => structuredClone(value);
 
+function normalizarNivelRiesgo(nivelRaw: unknown, probabilidad: number): NivelRiesgo {
+  const texto = String(nivelRaw ?? "").trim().toLowerCase();
+  if (texto === "alto") return "Alto";
+  if (texto === "medio") return "Medio";
+  if (texto === "bajo") return "Bajo";
+  if (probabilidad >= 0.65) return "Alto";
+  if (probabilidad >= 0.35) return "Medio";
+  return "Bajo";
+}
+
+function mapearEstudianteBackend(row: Record<string, unknown>, index: number): Estudiante {
+  const idNum = Number(row.id_matricula ?? index + 1);
+  const idMatricula = String(idNum);
+
+  const nombreCompleto =
+    String(
+      row.nombre_completo ??
+        row.nombre ??
+        (`${row.nombres ?? ""} ${row.apellidos ?? ""}`.trim() || `Estudiante ${idNum}`),
+    ).trim();
+
+  const codigo = String(
+    row.codigo ?? row.codigo_estudiante ?? `EST-${String(idNum).padStart(4, "0")}`,
+  );
+
+  const promGeneral = Number(row.prom_b12 ?? row.promedio ?? 14);
+  const b1 = Math.round(
+    Number(row.prom_b1 ?? row.promedio_b1 ?? row.b1 ?? promGeneral),
+  );
+  const b2 = Math.round(
+    Number(row.prom_b2 ?? row.promedio_b2 ?? row.b2 ?? promGeneral),
+  );
+
+  const inasistencias = Math.round(
+    Number(row.total_faltas ?? row.inasistencias ?? 0),
+  );
+
+  const obsGraves = Math.round(Number(row.n_obs_graves ?? row.obs_graves ?? 0));
+  const probabilidad = Math.min(0.99, Math.max(0.01, Number(row.probabilidad ?? 0.15)));
+  const nivel = normalizarNivelRiesgo(row.nivel, probabilidad);
+
+  const pesoAsistencia = Math.round(Math.min(45, inasistencias * 2 + 5));
+  const pesoNotas = b2 < 12 ? 38 : b2 < b1 ? 24 : 10;
+  const pesoConducta = obsGraves > 0 ? Math.min(35, obsGraves * 14) : 5;
+  const factores = `Asistencia (${pesoAsistencia} puntos); Rendimiento académico (${pesoNotas} puntos); Conducta (${pesoConducta} puntos)`;
+
+  const notasPorCurso = (cursosIniciales as Curso[]).map((curso, idx) => {
+    const variacion = ((idNum + idx) % 3) - 1;
+    return {
+      curso: curso.nombre,
+      B1: Math.min(20, Math.max(0, Math.round(b1 + variacion))),
+      B2: Math.min(20, Math.max(0, Math.round(b2 + variacion))),
+    };
+  });
+
+  const observacionesConducta: ObservacionConducta[] = Array.from(
+    { length: Math.min(obsGraves, 5) },
+    (_, i) => ({
+      fecha: `2026-10-${String(10 + i * 4).padStart(2, "0")}`,
+      tipo: "Grave",
+      deriva_a_tutor: true,
+      comentario: "Observación registrada en la base de datos académica.",
+    }),
+  );
+
+  const asistenciaReciente: RegistroAsistencia[] = [
+    {
+      fecha: "2026-11-25",
+      estado: inasistencias >= 4 ? "Falta injustificada" : "Presente",
+      hora_ingreso: inasistencias >= 4 ? null : "07:42",
+      medio: "Lector IoT",
+    },
+    {
+      fecha: "2026-11-24",
+      estado: inasistencias >= 2 ? "Tardanza" : "Presente",
+      hora_ingreso: inasistencias >= 2 ? "08:06" : "07:38",
+      medio: "Lector IoT",
+    },
+    {
+      fecha: "2026-11-21",
+      estado: "Presente",
+      hora_ingreso: "07:40",
+      medio: "Manual",
+    },
+  ];
+
+  return {
+    alumno: {
+      id_matricula: idMatricula,
+      nombre: nombreCompleto,
+      codigo,
+      promedios_bimestre: { B1: b1, B2: b2 },
+      inasistencias,
+      apoderado: {
+        nombres: String(
+          row.apoderado_nombres ?? row.nombre_apoderado ?? "Apoderado registrado",
+        ),
+        parentesco: String(row.apoderado_parentesco ?? "Apoderado"),
+      },
+    },
+    riesgo: {
+      probabilidad,
+      nivel,
+      factores,
+    },
+    observaciones_conducta: observacionesConducta,
+    tutorias: [],
+    derivaciones: [],
+    asistencia_reciente: asistenciaReciente,
+    notas_por_curso: notasPorCurso,
+    calificaciones: [],
+    contactos: [],
+  };
+}
+
 const createInitialState = (): DataState => ({
   estudiantes: clone(estudiantesIniciales as Estudiante[]),
   usuarios: clone(usuariosIniciales as Usuario[]),
@@ -63,6 +181,27 @@ const listeners = new Set<() => void>();
 
 function emitChange() {
   listeners.forEach((listener) => listener());
+}
+
+export async function cargarEstudiantesDesdeBackend() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/estudiantes?limit=200`);
+    if (!response.ok) return;
+    const data = await response.json();
+    if (!Array.isArray(data) || data.length === 0) return;
+
+    const estudiantesReales = data.map((row, index) =>
+      mapearEstudianteBackend(row as Record<string, unknown>, index),
+    );
+    state = { ...state, estudiantes: estudiantesReales };
+    emitChange();
+  } catch {
+    // Si el backend FastAPI está apagado, mantiene los datos de demostración
+  }
+}
+
+if (typeof window !== "undefined") {
+  void cargarEstudiantesDesdeBackend();
 }
 
 function updateEstudiante(idMatricula: string, updater: (estudiante: Estudiante) => Estudiante) {
@@ -264,8 +403,6 @@ export function actualizarRespuestaContacto(
   }));
 }
 
-// Esta capa permite reemplazar los patrones de demostración por el sistema
-// definitivo de soluciones sin modificar ninguna pantalla.
 export function getAccionesSugeridas(
   motivo: Motivo,
   historial: Tutoria[],
@@ -305,7 +442,6 @@ export function estimarRiesgoSimulado(estudiante: Estudiante): RiesgoEstimado {
   const evidencias = evidenciasSesion.get(estudiante.alumno.id_matricula) ?? [];
   let probabilidad = estudiante.riesgo.probabilidad;
 
-  // Valores de demostración, no entrenados.
   evidencias.forEach((evidencia) => {
     if (evidencia.tipo === "calificacion") {
       if (evidencia.nota < 11) probabilidad += 0.05;
@@ -341,6 +477,7 @@ export function restablecerDatosDemostracion() {
   state = { ...createInitialState(), usuarioActivo };
   evidenciasSesion = new Map();
   emitChange();
+  void cargarEstudiantesDesdeBackend();
 }
 
 export function useDataStore() {

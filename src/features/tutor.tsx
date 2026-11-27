@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { getAccionesSugeridas, parsearFactoresRiesgo, registrarTutoria, useDataStore, type AccionTutoria, type DerivacionTutoria, type Estudiante, type Motivo, type RecalculoRiesgo } from "../data";
 import { Button, HelpHint, Icon, PageHeading, RiskBadge, TrendIcon, calcularTendencia, formatearNivelPorcentaje, type IconName, type View } from "../components/common";
 import { displayFactorFamily, getStudentReasons, getTopRecommendation } from "./recommendations";
@@ -17,6 +17,9 @@ export function Dashboard({
   dismissAlert: () => void;
 }) {
   const { estudiantes, modelo } = useDataStore();
+  const [dashboardPage, setDashboardPage] = useState(1);
+  const itemsPerPage = 10;
+
   const riskCounts = {
     Bajo: estudiantes.filter((estudiante) => estudiante.riesgo.nivel === "Bajo").length,
     Medio: estudiantes.filter((estudiante) => estudiante.riesgo.nivel === "Medio").length,
@@ -40,6 +43,14 @@ export function Dashboard({
       const levelDifference = levelOrder[a.riesgo.nivel] - levelOrder[b.riesgo.nivel];
       return levelDifference || b.riesgo.probabilidad - a.riesgo.probabilidad;
     });
+
+  const totalDashboardPages = Math.max(1, Math.ceil(priorityStudents.length / itemsPerPage));
+  const currentDashboardPage = Math.min(dashboardPage, totalDashboardPages);
+  const paginatedPriorityStudents = priorityStudents.slice(
+    (currentDashboardPage - 1) * itemsPerPage,
+    currentDashboardPage * itemsPerPage,
+  );
+
   const priorityStudent = priorityStudents[0];
   const pendingTeacherDerivations = estudiantes.reduce(
     (total, estudiante) =>
@@ -106,7 +117,7 @@ export function Dashboard({
                 </tr>
               </thead>
               <tbody>
-                {priorityStudents.map((student) => {
+                {paginatedPriorityStudents.map((student) => {
                   const performance = calcularTendencia(
                     student.alumno.promedios_bimestre.B1,
                     student.alumno.promedios_bimestre.B2,
@@ -144,6 +155,32 @@ export function Dashboard({
               </tbody>
             </table>
           </div>
+          {priorityStudents.length > itemsPerPage && (
+            <div className="directory-footer" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem" }}>
+              <p>
+                Mostrando {(currentDashboardPage - 1) * itemsPerPage + 1}–
+                {Math.min(currentDashboardPage * itemsPerPage, priorityStudents.length)} de{" "}
+                <strong>{priorityStudents.length}</strong> estudiantes priorizados
+              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Button
+                  secondary
+                  onClick={() => setDashboardPage((p) => Math.max(1, p - 1))}
+                >
+                  Anterior
+                </Button>
+                <span style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                  Página {currentDashboardPage} de {totalDashboardPages}
+                </span>
+                <Button
+                  secondary
+                  onClick={() => setDashboardPage((p) => Math.min(totalDashboardPages, p + 1))}
+                >
+                  Siguiente
+                </Button>
+              </div>
+            </div>
+          )}
         </article>
         <aside className="card alerts-summary">
           <div className="card-header">
@@ -189,7 +226,7 @@ export function Dashboard({
           <div><span><Icon name="alerts" /></span><strong>El tutor revisa y decide</strong><small>Decisión profesional</small></div>
         </div>
         <p className="roadmap-note">
-          Riesgo medio: desde {(modelo.umbrales.medio * 100).toLocaleString("es-PE", { maximumFractionDigits: 1 })} % · Riesgo alto: desde {(modelo.umbrales.alto * 100).toLocaleString("es-PE", { maximumFractionDigits: 1 })} %
+          Riesgo medio: desde {Math.round(modelo.umbrales.medio * 100)} % · Riesgo alto: desde {Math.round(modelo.umbrales.alto * 100)} %
         </p>
       </section>
     </>
@@ -208,6 +245,9 @@ export function Students({
   const { estudiantes } = useDataStore();
   const [query, setQuery] = useState("");
   const [risk, setRisk] = useState("Todos");
+  const [studentsPage, setStudentsPage] = useState(1);
+  const itemsPerPage = 10;
+
   const filtered = estudiantes
     .filter(
       (student) =>
@@ -215,6 +255,13 @@ export function Students({
         (risk === "Todos" || student.riesgo.nivel === risk),
     )
     .sort((a, b) => b.riesgo.probabilidad - a.riesgo.probabilidad);
+
+  const totalStudentsPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
+  const currentStudentsPage = Math.min(studentsPage, totalStudentsPages);
+  const paginatedStudents = filtered.slice(
+    (currentStudentsPage - 1) * itemsPerPage,
+    currentStudentsPage * itemsPerPage,
+  );
 
   return (
     <>
@@ -225,7 +272,10 @@ export function Students({
             <Icon name="search" size={18} />
             <input
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setStudentsPage(1);
+              }}
               placeholder="Buscar por nombre"
               aria-label="Buscar estudiante por nombre"
             />
@@ -233,7 +283,14 @@ export function Students({
           <label className="filter-box">
             <Icon name="filter" size={17} />
             <span>Nivel de riesgo</span>
-            <select value={risk} onChange={(event) => setRisk(event.target.value)} aria-label="Filtrar por nivel de riesgo">
+            <select
+              value={risk}
+              onChange={(event) => {
+                setRisk(event.target.value);
+                setStudentsPage(1);
+              }}
+              aria-label="Filtrar por nivel de riesgo"
+            >
               <option>Todos</option>
               <option>Bajo</option>
               <option>Medio</option>
@@ -245,11 +302,11 @@ export function Students({
           <table>
             <thead><tr><th>Estudiante</th><th>Código</th><th title="Promedio del Bimestre 1 al Bimestre 2">Promedio Bim. 1 → Bim. 2</th><th>Inasistencias</th><th>Tendencia</th><th>Nivel de riesgo (%) <HelpHint text="Qué tan probable es que el estudiante termine el año con dificultades." /></th><th>Nivel</th><th>Acción recomendada</th><th>Acciones</th></tr></thead>
             <tbody>
-              {filtered.map((student) => (
+              {paginatedStudents.map((student) => (
                 <tr key={student.alumno.id_matricula}>
                   <td><div className="student-cell"><span className="student-avatar">{student.alumno.nombre.split(" ").map((part) => part[0]).join("")}</span><div><strong>{student.alumno.nombre}</strong><span>3.º Sec. · A</span></div></div></td>
                   <td>{student.alumno.codigo}</td>
-                  <td><strong className="average-value">{student.alumno.promedios_bimestre.B1} → {student.alumno.promedios_bimestre.B2}</strong></td>
+                  <td><strong className="average-value">{Math.round(student.alumno.promedios_bimestre.B1)} → {Math.round(student.alumno.promedios_bimestre.B2)}</strong></td>
                   <td>{student.alumno.inasistencias}</td>
                   <td>
                     {(() => {
@@ -280,9 +337,32 @@ export function Students({
             </tbody>
           </table>
         </div>
-        <div className="directory-footer">
-          <p><Icon name="info" size={17} /> Vista de consulta. El nivel de riesgo es un apoyo para la revisión del tutor, no una etiqueta.</p>
-          <strong>{filtered.length} estudiantes</strong>
+        <div className="directory-footer" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem" }}>
+          <p>
+            <Icon name="info" size={17} /> Mostrando{" "}
+            {filtered.length === 0 ? 0 : (currentStudentsPage - 1) * itemsPerPage + 1}–
+            {Math.min(currentStudentsPage * itemsPerPage, filtered.length)} de{" "}
+            <strong>{filtered.length}</strong> estudiantes
+          </p>
+          {filtered.length > itemsPerPage && (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <Button
+                secondary
+                onClick={() => setStudentsPage((p) => Math.max(1, p - 1))}
+              >
+                Anterior
+              </Button>
+              <span style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                Página {currentStudentsPage} de {totalStudentsPages}
+              </span>
+              <Button
+                secondary
+                onClick={() => setStudentsPage((p) => Math.min(totalStudentsPages, p + 1))}
+              >
+                Siguiente
+              </Button>
+            </div>
+          )}
         </div>
       </section>
     </>
@@ -374,7 +454,7 @@ function SuggestedActions({
               <span className="recommended-chip">Recomendada</span>
               <small>Acción recomendada</small>
               <strong>{recommended.nombre}</strong>
-              <p>En casos similares, esta acción ayudó a mejorar el promedio en el {recommended.pct_mejoro} % de los casos ({recommended.n_casos} casos).</p>
+              <p>En casos similares, esta acción ayudó a mejorar el promedio en el {Math.round(recommended.pct_mejoro)} % de los casos ({recommended.n_casos} casos).</p>
               {recommended.aplicaciones.map((tutoring, index) => (
                 <div className="previous-action" key={`${tutoring.fecha}-${index}`}>
                   <Icon name="check" size={14} /> Ya aplicada el {tutoring.fecha} · Resultado: {tutoring.mejoro_sim ? "Mejoró" : "No mejoró"}
@@ -387,14 +467,14 @@ function SuggestedActions({
               <div className="pattern-action" key={action.nombre}>
                   <div className="pattern-action-heading">
                     <strong>{action.nombre}</strong>
-                    <span>{action.pct_mejoro} %</span>
+                    <span>{Math.round(action.pct_mejoro)} %</span>
                   </div>
-                  <div className="pattern-bar" aria-label={`${action.pct_mejoro} % de casos con mejora`}>
-                    <span style={{ width: `${action.pct_mejoro}%` }} />
+                  <div className="pattern-bar" aria-label={`${Math.round(action.pct_mejoro)} % de casos con mejora`}>
+                    <span style={{ width: `${Math.round(action.pct_mejoro)}%` }} />
                   </div>
                   <div className="pattern-metrics">
                     <span>{action.n_casos} casos</span>
-                    <span>{action.variacion_media > 0 ? "+" : ""}{action.variacion_media} puntos de promedio</span>
+                    <span>{action.variacion_media > 0 ? "+" : ""}{Math.round(action.variacion_media)} puntos de promedio</span>
                   </div>
                   {action.aplicaciones.map((tutoring, index) => (
                     <div className="previous-action" key={`${tutoring.fecha}-${index}`}>
@@ -462,8 +542,9 @@ export function AlertDetail({
   const probabilityPercent = student.riesgo.probabilidad * 100;
   const factors = parsearFactoresRiesgo(student.riesgo.factores);
   const maxFactorValue = Math.max(...factors.map((factor) => Math.abs(factor.valor)), 0.01);
-  const averageChange =
-    student.alumno.promedios_bimestre.B2 - student.alumno.promedios_bimestre.B1;
+  const b1 = Math.round(student.alumno.promedios_bimestre.B1);
+  const b2 = Math.round(student.alumno.promedios_bimestre.B2);
+  const averageChange = b2 - b1;
   const relevantObservations = student.observaciones_conducta.filter(
     (observation) =>
       observation.tipo === "Grave" || observation.tipo === "Socioemocional",
@@ -493,9 +574,9 @@ export function AlertDetail({
                 }}
               >
                 <span className="risk-threshold threshold-medium" style={{ left: `${modelo.umbrales.medio * 100}%` }} />
-                <span className="risk-threshold-label label-medium" style={{ left: `${modelo.umbrales.medio * 100}%` }}>{(modelo.umbrales.medio * 100).toLocaleString("es-PE", { maximumFractionDigits: 1 })} %</span>
+                <span className="risk-threshold-label label-medium" style={{ left: `${modelo.umbrales.medio * 100}%` }}>{Math.round(modelo.umbrales.medio * 100)} %</span>
                 <span className="risk-threshold threshold-high" style={{ left: `${modelo.umbrales.alto * 100}%` }} />
-                <span className="risk-threshold-label label-high" style={{ left: `${modelo.umbrales.alto * 100}%` }}>{(modelo.umbrales.alto * 100).toLocaleString("es-PE", { maximumFractionDigits: 1 })} %</span>
+                <span className="risk-threshold-label label-high" style={{ left: `${modelo.umbrales.alto * 100}%` }}>{Math.round(modelo.umbrales.alto * 100)} %</span>
                 <span
                   className="risk-indicator"
                   style={{ left: `${Math.min(99, Math.max(1, probabilityPercent))}%` }}
@@ -523,7 +604,7 @@ export function AlertDetail({
                 <div>
                   <strong>Promedio Bimestre 1 → Bimestre 2</strong>
                   <p>
-                    {student.alumno.promedios_bimestre.B1} → {student.alumno.promedios_bimestre.B2}
+                    {b1} → {b2}
                     {averageChange < 0
                       ? ` · caída de ${Math.abs(averageChange)} ${Math.abs(averageChange) === 1 ? "punto" : "puntos"}`
                       : averageChange > 0
@@ -566,10 +647,10 @@ export function AlertDetail({
           <article className="card metrics-card">
             <h2>Indicadores actuales</h2>
             <div className="metric-grid">
-              <div><span>Promedio Bimestre 2</span><strong>{student.alumno.promedios_bimestre.B2}</strong><small>de 20</small></div>
-              <div><span>Promedio Bimestre 1</span><strong>{student.alumno.promedios_bimestre.B1}</strong><small>de 20</small></div>
+              <div><span>Promedio Bimestre 2</span><strong>{b2}</strong><small>de 20</small></div>
+              <div><span>Promedio Bimestre 1</span><strong>{b1}</strong><small>de 20</small></div>
               <div><span>Inasistencias</span><strong>{student.alumno.inasistencias}</strong><small>este periodo</small></div>
-              <div><span>Tendencia</span><strong className="trend-value"><TrendIcon trend={calcularTendencia(student.alumno.promedios_bimestre.B1, student.alumno.promedios_bimestre.B2)} />{calcularTendencia(student.alumno.promedios_bimestre.B1, student.alumno.promedios_bimestre.B2)}</strong></div>
+              <div><span>Tendencia</span><strong className="trend-value"><TrendIcon trend={calcularTendencia(b1, b2)} />{calcularTendencia(b1, b2)}</strong></div>
             </div>
           </article>
           <article className="card factors-card">
@@ -609,11 +690,11 @@ function PerformanceChart({ student }: { student: Estudiante }) {
   const sessionGrades = student.calificaciones ?? [];
   const currentAverage =
     sessionGrades.length > 0
-      ? sessionGrades.reduce((total, grade) => total + grade.nota, 0) / sessionGrades.length
+      ? Math.round(sessionGrades.reduce((total, grade) => total + grade.nota, 0) / sessionGrades.length)
       : null;
   const points = [
-    { label: "Bimestre 1", value: student.alumno.promedios_bimestre.B1 },
-    { label: "Bimestre 2", value: student.alumno.promedios_bimestre.B2 },
+    { label: "Bimestre 1", value: Math.round(student.alumno.promedios_bimestre.B1) },
+    { label: "Bimestre 2", value: Math.round(student.alumno.promedios_bimestre.B2) },
     ...(currentAverage === null ? [] : [{ label: "Actual (en curso)", value: currentAverage }]),
   ];
   const xPositions = points.length === 2 ? [85, 515] : [60, 300, 540];
@@ -638,13 +719,119 @@ function PerformanceChart({ student }: { student: Estudiante }) {
           <g key={point.label}>
             <circle cx={point.x} cy={point.y} r="6" className="chart-point" />
             <text x={point.x} y={point.y - 15} textAnchor="middle" className="chart-value">
-              {point.value.toLocaleString("es-PE", { maximumFractionDigits: 1 })}
+              {Math.round(point.value)}
             </text>
             <text x={point.x} y="207" textAnchor="middle" className="axis-label">{point.label}</text>
           </g>
         ))}
       </svg>
     </div>
+  );
+}
+
+interface ExplicacionIAResponse {
+  id_matricula: number;
+  fuente: string;
+  variables_que_aumentan_riesgo: string[];
+  variables_que_reducen_riesgo: string[];
+  analisis_factores_ocultos: string;
+  conclusion_ia: string;
+}
+
+function DiagnosticoIA({ idMatricula }: { idMatricula: string }) {
+  const [iaData, setIaData] = useState<ExplicacionIAResponse | null>(null);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    let activo = true;
+    setCargando(true);
+
+    // Convierte "EST-0324" -> 324 o "12" -> 12
+    const idNum = Number(String(idMatricula).replace(/\D/g, "")) || 1;
+
+    fetch(`http://127.0.0.1:8000/estudiantes/${idNum}/explicacion-riesgo`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (activo) {
+          setIaData(data);
+          setCargando(false);
+        }
+      })
+      .catch(() => {
+        if (activo) {
+          setIaData(null);
+          setCargando(false);
+        }
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, [idMatricula]);
+
+  if (cargando) {
+    return (
+      <article className="card wide" style={{ gridColumn: "1 / -1" }}>
+        <p className="section-label">Diagnóstico IA · Gemini + Random Forest</p>
+        <p>Analizando notas, asistencia y factores sociofamiliares en SQLite...</p>
+      </article>
+    );
+  }
+
+  if (!iaData) return null;
+
+  return (
+    <article className="card wide" style={{ gridColumn: "1 / -1" }}>
+      <div className="card-header">
+        <div>
+          <p className="section-label">Diagnóstico explicativo IA</p>
+          <h2>Análisis de factores y conclusión para el tutor</h2>
+        </div>
+        <span className="update-chip">{iaData.fuente}</span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "1rem", marginBottom: "1rem" }}>
+        <div className="human-note" style={{ margin: 0, alignItems: "flex-start" }}>
+          <Icon name="alerts" />
+          <div>
+            <strong>Variables que aumentan el riesgo</strong>
+            <ul style={{ margin: "0.4rem 0 0 1rem", padding: 0 }}>
+              {iaData.variables_que_aumentan_riesgo.map((item, idx) => (
+                <li key={idx} style={{ marginBottom: "0.25rem" }}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <div className="human-note" style={{ margin: 0, alignItems: "flex-start" }}>
+          <Icon name="check" />
+          <div>
+            <strong>Variables que reducen el riesgo</strong>
+            <ul style={{ margin: "0.4rem 0 0 1rem", padding: 0 }}>
+              {iaData.variables_que_reducen_riesgo.map((item, idx) => (
+                <li key={idx} style={{ marginBottom: "0.25rem" }}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div className="evolution-summary" style={{ marginBottom: "1rem" }}>
+        <div className="summary-mark"><Icon name="model" /></div>
+        <div>
+          <p className="section-label">Factores ocultos (distancia, familia, entorno)</p>
+          <p>{iaData.analisis_factores_ocultos}</p>
+        </div>
+      </div>
+
+      <div className="automatic-alert" style={{ margin: 0 }}>
+        <span className="automatic-alert-icon"><Icon name="info" /></span>
+        <p style={{ whiteSpace: "pre-line" }}>
+          <strong>Conclusión IA: </strong>
+          {iaData.conclusion_ia}
+        </p>
+      </div>
+    </article>
   );
 }
 
@@ -661,8 +848,9 @@ export function History({
   openFollowUp: () => void;
   canCommunicate: boolean;
 }) {
-  const averageChange =
-    student.alumno.promedios_bimestre.B2 - student.alumno.promedios_bimestre.B1;
+  const b1 = Math.round(student.alumno.promedios_bimestre.B1);
+  const b2 = Math.round(student.alumno.promedios_bimestre.B2);
+  const averageChange = b2 - b1;
   const socioemotionalSignals = student.observaciones_conducta.filter(
     (observation) => observation.tipo === "Socioemocional",
   ).length;
@@ -714,7 +902,7 @@ export function History({
         <article className="card chart-card wide">
           <div className="card-header">
             <div><p className="section-label">Rendimiento académico</p><h2>Promedio del Bimestre 1 al Bimestre 2</h2><span>{averageChange < 0 ? `El promedio bajó ${Math.abs(averageChange)} ${Math.abs(averageChange) === 1 ? "punto" : "puntos"} entre el Bimestre 1 y el Bimestre 2.` : averageChange > 0 ? `El promedio subió ${averageChange} ${averageChange === 1 ? "punto" : "puntos"} entre el Bimestre 1 y el Bimestre 2.` : "El promedio se mantuvo entre ambos bimestres."}</span></div>
-            <span className="trend-chip"><TrendIcon trend={calcularTendencia(student.alumno.promedios_bimestre.B1, student.alumno.promedios_bimestre.B2)} /> {calcularTendencia(student.alumno.promedios_bimestre.B1, student.alumno.promedios_bimestre.B2)}</span>
+            <span className="trend-chip"><TrendIcon trend={calcularTendencia(b1, b2)} /> {calcularTendencia(b1, b2)}</span>
           </div>
           <PerformanceChart student={student} />
           <div className="course-table">
@@ -723,13 +911,17 @@ export function History({
               <table>
                 <thead><tr><th>Curso</th><th title="Bimestre 1">Bim. 1</th><th title="Bimestre 2">Bim. 2</th></tr></thead>
                 <tbody>
-                  {student.notas_por_curso.map((course) => (
-                    <tr key={course.curso}>
-                      <td><strong>{course.curso}</strong></td>
-                      <td className={course.B1 < 11 ? "failing-grade" : ""}>{course.B1}</td>
-                      <td className={course.B2 < 11 ? "failing-grade" : ""}>{course.B2}</td>
-                    </tr>
-                  ))}
+                  {student.notas_por_curso.map((course) => {
+                    const notaB1 = Math.round(course.B1);
+                    const notaB2 = Math.round(course.B2);
+                    return (
+                      <tr key={course.curso}>
+                        <td><strong>{course.curso}</strong></td>
+                        <td className={notaB1 < 11 ? "failing-grade" : ""}>{notaB1}</td>
+                        <td className={notaB2 < 11 ? "failing-grade" : ""}>{notaB2}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -788,6 +980,7 @@ export function History({
           <div className="summary-mark"><Icon name="trend" /></div>
           <div><p className="section-label">Lectura orientativa</p><h2>Resumen de evolución</h2><p>{reading}</p></div>
         </article>
+        <DiagnosticoIA idMatricula={student.alumno.id_matricula} />
         <article className="card support-timeline-card">
           <div className="card-header"><div><p className="section-label">Acompañamiento</p><h2>Línea de tiempo de apoyo</h2><span>Tutorías, observaciones y derivaciones registradas.</span></div></div>
           <div className="support-timeline">
@@ -807,11 +1000,11 @@ export function History({
           <div className="card-header"><div><p className="section-label">Resultados</p><h2>¿Funcionó la acción?</h2><span>Comparación del promedio antes y después de cada tutoría.</span></div></div>
           <div className="action-results-list">
             {student.tutorias.length > 0 ? student.tutorias.map((tutoria, index) => {
-              const improved = student.alumno.promedios_bimestre.B2 > student.alumno.promedios_bimestre.B1;
+              const improved = b2 > b1;
               return (
                 <div key={`${tutoria.fecha}-${tutoria.accion}-${index}`}>
                   <div><strong>{tutoria.accion}</strong><span>{tutoria.fecha} · {tutoria.motivo}</span></div>
-                  <span>{student.alumno.promedios_bimestre.B1} → {student.alumno.promedios_bimestre.B2}</span>
+                  <span>{b1} → {b2}</span>
                   <span className={improved ? "result-improved" : "result-not-improved"}>{improved ? "Mejoró" : "No mejoró"}</span>
                 </div>
               );
