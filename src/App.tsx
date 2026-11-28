@@ -1,6 +1,10 @@
-import { useState } from "react";
-import { cerrarSesion, restablecerDatosDemostracion, useDataStore } from "./data";
-import { Header, Sidebar, landingByRole, navigationByRole, type View } from "./components/common";
+import { useEffect, useState } from "react";
+import {
+  cargarHistorialEstudiante,
+  cerrarSesion,
+  restablecerDatosDemostracion,
+  useDataStore,
+} from "./data";import { Header, Sidebar, landingByRole, navigationByRole, type View } from "./components/common";
 import { LoginPage } from "./features/auth";
 import { AlertDetail, Dashboard, History, Students } from "./features/tutor";
 import { Communication, FollowUpModal } from "./features/communication";
@@ -15,6 +19,25 @@ export default function App() {
     () => data.estudiantes[0]?.alumno.id_matricula ?? "",
   );
   const activeUser = data.usuarioActivo;
+  const selectedStudent =
+    data.estudiantes.find(
+      (student) => student.alumno.id_matricula === selectedStudentId,
+    ) ?? data.estudiantes[0];
+
+  // Chip fijo en el header: solo indica el año/grado. El filtro por sección va en la tabla.
+  const seccionChip = (() => {
+    if (!activeUser) return undefined;
+    const teacherProfile = data.docentes.find((d) => d.usuario_id === activeUser.id);
+    if (teacherProfile) return `${teacherProfile.grado} · ${teacherProfile.seccion}`;
+    return "3.º Secundaria";
+  })();
+
+  useEffect(() => {
+    if (!activeUser || !selectedStudent) return;
+    if (view === "alert" || view === "history") {
+      void cargarHistorialEstudiante(selectedStudent.alumno.id_matricula);
+    }
+  }, [activeUser, selectedStudent?.alumno.id_matricula, view]);
 
   if (!activeUser) {
     return (
@@ -27,11 +50,6 @@ export default function App() {
       />
     );
   }
-
-  const selectedStudent =
-    data.estudiantes.find(
-      (student) => student.alumno.id_matricula === selectedStudentId,
-    ) ?? data.estudiantes[0];
   const allowedViews = navigationByRole[activeUser.rol].map((item) => item.view);
   const canAccessView = allowedViews.includes(view);
   const derivations = data.estudiantes.flatMap((estudiante) => estudiante.derivaciones);
@@ -148,6 +166,7 @@ export default function App() {
             if (activeUser.rol === "Docente") navigate("my-derivations");
             else if (activeUser.rol === "Tutor") navigate("derivations");
           }}
+          seccionChip={seccionChip}
         />
         <main className="content">{renderView()}</main>
         <footer>Datos ficticios con fines demostrativos. Prototipo académico con identidad visual referencial del colegio.</footer>

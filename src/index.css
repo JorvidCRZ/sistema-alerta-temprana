@@ -362,7 +362,47 @@ tbody tr:hover { background: #fbfbfe; }
 .course-table { margin-top: 4px; border-top: 1px solid var(--line); }
 .course-table .card-header { padding-block: 17px 13px; }
 .course-table td, .course-table th { padding-block: 11px; }
+.course-table tbody tr { transition: background 0.15s; }
+.course-table tbody tr[style*="cursor: pointer"]:hover { background: #f5f6ff; }
 .failing-grade { color: var(--high); background: #fff7f7; font-weight: 800; }
+.course-header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bimester-filter-select { padding: 6px 12px; border: 1.5px solid var(--text, #1f2937); border-radius: 8px; background: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.back-general-btn { background: #fff; border: 1px solid var(--line); color: var(--text, #1f2937); border-radius: 8px; padding: 6px 12px; cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; transition: border-color 0.15s, background 0.15s; }
+.back-general-btn:hover { border-color: var(--blue); color: var(--blue); background: #f5f7ff; }
+.course-detail-chart { padding: 4px 0 12px; }
+.bar-detail-wrap { height: 225px; align-items: stretch; }
+.bar-detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; align-items: end; padding: 14px 32px 0; height: 100%; border-bottom: 1px solid var(--line); }
+.bar-detail-col { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px; }
+.bar-detail-track { width: 100%; max-width: 56px; height: 165px; display: flex; align-items: flex-end; justify-content: center; }
+.bar-detail-fill { width: 100%; min-height: 18px; border-radius: 7px 7px 0 0; background: #2d7ff9; position: relative; display: flex; justify-content: center; transition: height 0.25s ease; }
+.bar-detail-fill.is-average { background: #142c7a; }
+.bar-detail-val { position: absolute; top: -20px; font-size: 12px; font-weight: 800; color: var(--text, #1f2937); }
+.bar-detail-empty { font-size: 11px; color: var(--muted); font-style: italic; padding-bottom: 6px; }
+.bar-detail-label { font-size: 11px; font-weight: 600; color: var(--muted); text-align: center; padding-bottom: 6px; }
+.course-eval-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 16px 22px 6px; }
+.course-eval-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: #fff; display: flex; flex-direction: column; gap: 4px; }
+.course-eval-card.is-average { background: #f3f7ff; border-color: #b7cdfc; }
+.course-eval-card.is-average .course-eval-title, .course-eval-card.is-average strong { color: var(--blue); }
+.course-eval-title { font-size: 12px; color: var(--muted); font-weight: 600; }
+.course-eval-card strong { font-size: 18px; font-weight: 800; }
+.course-eval-card strong.is-missing { font-size: 14px; font-weight: 600; color: var(--muted); font-style: italic; }
+.partial-tag { font-size: 11px; color: var(--amber, #b45309); font-weight: 600; }
+.partial-asterisk { font-size: 11px; color: var(--amber, #b45309); font-weight: 600; }
+.grade-pending { color: var(--muted); font-style: italic; }
+.course-row-clickable { cursor: pointer; }
+.course-row-clickable:hover { background: #f5f7ff; }
+.course-row-selected { cursor: pointer; background: #eef4ff; outline: 2px solid #2d7ff9; outline-offset: -2px; }
+@media (max-width: 720px) { .course-eval-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .bar-detail-grid { padding: 14px 10px 0; gap: 12px; } }
+.attendance-toolbar { padding: 0 22px 12px; border-bottom: 1px solid var(--line); }
+.attendance-summary-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.attendance-filter-chip { border: 1px solid var(--line); background: #fff; color: var(--text, #1f2937); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+.attendance-filter-chip:hover { border-color: var(--blue); color: var(--blue); }
+.attendance-filter-chip.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+.attendance-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 22px 16px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+.attendance-pagination-controls { display: flex; align-items: center; gap: 10px; }
+.attendance-pagination-controls button { border: 1px solid var(--line); background: #fff; color: var(--text, #1f2937); border-radius: 6px; padding: 5px 12px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.attendance-pagination-controls button:hover:not(:disabled) { border-color: var(--blue); color: var(--blue); }
+.attendance-pagination-controls button:disabled { opacity: 0.45; cursor: not-allowed; }
 .bar-chart { height: 235px; padding: 15px 30px 23px; display: flex; align-items: flex-end; justify-content: space-around; gap: 18px; }
 .bar-column { height: 100%; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; color: var(--muted); font-size: 9px; }
 .bar-track { width: 100%; max-width: 48px; height: 165px; display: flex; align-items: flex-end; border-radius: 8px 8px 3px 3px; background: #f1f2f8; overflow: hidden; }
@@ -624,4 +664,52 @@ footer { position: relative; z-index: 6; padding: 17px 36px 28px; color: #7d8498
   .evidence-tabs button { flex: 0 0 auto; padding-inline: 10px; }
   .evidence-form { grid-template-columns: 1fr; }
   .full-field { grid-column: 1; }
+}
+
+/* ── Chips de filtro por sección ───────────────────────────────────────── */
+.section-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.section-chip {
+  padding: 5px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface, #fff);
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.section-chip:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.section-chip.active {
+  background: var(--blue);
+  color: #fff;
+  border-color: var(--blue);
+}
+
+.class-chip-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.class-chip-select select {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  outline: none;
+  padding-right: 2px;
 }

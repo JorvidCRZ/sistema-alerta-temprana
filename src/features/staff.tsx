@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { actualizarDerivacion, crearDerivacion, estimarRiesgoSimulado, getEstudiantes, notificarTutor, registrarAsistencia, registrarCalificacion, registrarObservacion, registrarTutoria, useDataStore, type AccionTutoria, type DerivacionTutoria, type EstadoAsistencia, type TipoEvaluacion, type TipoObservacion, type Usuario } from "../data";
+import { useEffect, useState, type FormEvent } from "react";
+import { actualizarDerivacion, bimestreKey, crearDerivacion, estimarRiesgoSimulado, formatearBimestre, getEstudiantes, notificarTutor, obtenerBimestresDisponibles, registrarAsistencia, registrarCalificacion, registrarObservacion, registrarTutoria, useDataStore, type AccionTutoria, type DerivacionTutoria, type EstadoAsistencia, type TipoEvaluacion, type TipoObservacion, type Usuario } from "../data";
 import { Button, HelpHint, Icon, PageHeading, RiskBadge, TrendIcon, type IconName, type View } from "../components/common";
 import { getTopRecommendation } from "./recommendations";
 
@@ -241,7 +241,7 @@ export function TeacherSection({ activeUser }: { activeUser: Usuario }) {
                   <td>
                     <div className="student-cell">
                       <span className="student-avatar">{student.alumno.nombre.split(" ").map((part) => part[0]).join("")}</span>
-                      <div><strong>{student.alumno.nombre}</strong><span>3.º Sec. · A</span></div>
+                      <div><strong>{student.alumno.nombre}</strong><span>{student.alumno.grado != null ? `${student.alumno.grado}.º Sec. · ${student.alumno.letra ?? "?"}` : "3.º Sec."}</span></div>
                     </div>
                   </td>
                   <td>{student.alumno.codigo}</td>
@@ -259,17 +259,25 @@ export function TeacherSection({ activeUser }: { activeUser: Usuario }) {
 type EvidenceTab = "nota" | "asistencia" | "observacion";
 
 export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
-  const { cursos, estudiantes } = useDataStore();
+  const { cursos, estudiantes, bimestreActual, totalBimestres } = useDataStore();
   const teacherCourse =
     cursos.find((course) => course.nombre === activeUser.especialidad)?.nombre ??
     activeUser.especialidad;
+  const availableBimesters = obtenerBimestresDisponibles(bimestreActual, totalBimestres);
   const [tab, setTab] = useState<EvidenceTab>("nota");
   const [studentId, setStudentId] = useState(
     () => estudiantes[0]?.alumno.id_matricula ?? "",
   );
+  const [selectedBimester, setSelectedBimester] = useState<number>(() => bimestreActual);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [evaluationType, setEvaluationType] = useState<TipoEvaluacion>("Practica");
   const [grade, setGrade] = useState("");
+
+  useEffect(() => {
+    if (!availableBimesters.includes(selectedBimester)) {
+      setSelectedBimester(bimestreActual);
+    }
+  }, [bimestreActual, totalBimestres]);
   const [attendanceStatus, setAttendanceStatus] = useState<EstadoAsistencia>("Presente");
   const [observationType, setObservationType] = useState<TipoObservacion>("Leve");
   const [comment, setComment] = useState("");
@@ -343,7 +351,7 @@ export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
       const riesgoBackend = await registrarCalificacion(studentId, {
         fecha: date,
         curso: teacherCourse,
-        bimestre: "B2",
+        bimestre: bimestreKey(selectedBimester),
         tipo_evaluacion: evaluationType,
         nota: numericGrade,
       });
@@ -464,6 +472,16 @@ export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
           {tab === "nota" && (
             <form className="evidence-form" onSubmit={submitGrade}>
               <label className="form-field"><span>Curso</span><input value={teacherCourse} readOnly /></label>
+              <label className="form-field">
+                <span>Bimestre</span>
+                <select value={selectedBimester} onChange={(event) => setSelectedBimester(Number(event.target.value))}>
+                  {availableBimesters.map((bim) => (
+                    <option key={bim} value={bim}>
+                      {formatearBimestre(bim)}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label className="form-field"><span>Tipo de evaluación</span><select value={evaluationType} onChange={(event) => setEvaluationType(event.target.value as TipoEvaluacion)}><option value="Practica">Práctica</option><option>Simulacro</option><option>Examen</option></select></label>
               <label className="form-field"><span>Fecha</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label>
               <label className="form-field"><span>Nota</span><input type="number" min="0" max="20" step="0.1" value={grade} onChange={(event) => setGrade(event.target.value)} placeholder="0–20" required /></label>

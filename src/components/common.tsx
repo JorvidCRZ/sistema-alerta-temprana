@@ -290,11 +290,13 @@ export function Header({
   notificationCount,
   logout,
   openNotifications,
+  seccionChip,
 }: {
   activeUser: Usuario;
   notificationCount: number;
   logout: () => void;
   openNotifications: () => void;
+  seccionChip?: string;
 }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const initials = activeUser.nombre
@@ -310,7 +312,7 @@ export function Header({
         <p className="system-kicker">Riesgo académico</p>
       </div>
       <div className="header-actions">
-        <div className="class-chip">3.º Secundaria · A</div>
+        <div className="class-chip">{seccionChip ?? "3.º Secundaria"}</div>
         <button
           type="button"
           className="icon-button"

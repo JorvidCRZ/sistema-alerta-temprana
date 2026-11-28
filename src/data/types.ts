@@ -32,11 +32,12 @@ export type Motivo = (typeof MOTIVOS)[number];
 export type TipoContacto = (typeof TIPOS_CONTACTO)[number];
 export type NivelRiesgo = "Bajo" | "Medio" | "Alto";
 export type RolUsuario = "Tutor" | "Docente" | "Coordinacion";
+export type BimestreKey = "B1" | "B2" | "B3" | "B4";
 
 export interface Calificacion {
   fecha: string;
   curso: string;
-  bimestre: "B1" | "B2";
+  bimestre: BimestreKey;
   tipo_evaluacion: TipoEvaluacion;
   nota: number;
 }
@@ -94,6 +95,17 @@ export interface NotaPorCurso {
   curso: string;
   B1: number;
   B2: number;
+  B3?: number | null;
+  B4?: number | null;
+}
+
+export interface Seccion {
+  id_seccion: number;
+  grado: number;
+  letra: string;
+  codigo: string;
+  tutor: string;
+  total_estudiantes: number;
 }
 
 export interface Estudiante {
@@ -101,9 +113,12 @@ export interface Estudiante {
     id_matricula: string;
     nombre: string;
     codigo: string;
-    promedios_bimestre: { B1: number; B2: number };
+    promedios_bimestre: { B1: number; B2: number; B3?: number | null; B4?: number | null };
     inasistencias: number;
     apoderado: { nombres: string; parentesco: string };
+    grado?: number;
+    letra?: string;
+    seccion?: string;
   };
   riesgo: {
     probabilidad: number;

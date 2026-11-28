@@ -5,6 +5,12 @@ import docentesIniciales from "./docentes.json";
 import modeloInicial from "./modelo.json";
 import solucionesIniciales from "./soluciones.json";
 import usuariosIniciales from "./usuarios.json";
+import {
+  bimestreKey,
+  calcularPromedioCurso,
+  calcularPromedioGeneralBimestre,
+  normalizarBimestreNumero,
+} from "./academics";
 import type {
   Calificacion,
   AccionSugerida,
@@ -18,11 +24,14 @@ import type {
   Motivo,
   ModeloInfo,
   NivelRiesgo,
+  NotaPorCurso,
   ObservacionConducta,
   RegistroAsistencia,
   RecalculoRiesgo,
   RiesgoEstimado,
+  Seccion,
   Solucion,
+  TipoEvaluacion,
   Tutoria,
   Usuario,
 } from "./types";
@@ -50,6 +59,9 @@ interface DataState {
   recalculosRiesgo: Record<string, RecalculoRiesgo[]>;
   notificacionesTutor: number;
   modelo: ModeloInfo;
+  bimestreActual: number;
+  totalBimestres: number;
+  secciones: Seccion[];
 }
 
 type EvidenciaSesion =
@@ -158,6 +170,11 @@ function mapearEstudianteBackend(row: Record<string, unknown>, index: number): E
         ),
         parentesco: String(row.apoderado_parentesco ?? "Apoderado"),
       },
+      grado: row.grado != null ? Number(row.grado) : undefined,
+      letra: row.letra != null ? String(row.letra) : undefined,
+      seccion: row.grado != null && row.letra != null
+        ? `${row.grado}${String(row.letra).toUpperCase()}`
+        : undefined,
     },
     riesgo: {
       probabilidad,
@@ -184,6 +201,9 @@ const createInitialState = (): DataState => ({
   recalculosRiesgo: {},
   notificacionesTutor: 0,
   modelo: clone(modeloInicial as ModeloInfo),
+  bimestreActual: 3,
+  totalBimestres: 4,
+  secciones: [],
 });
 
 let state = createInitialState();
@@ -194,11 +214,81 @@ function emitChange() {
   listeners.forEach((listener) => listener());
 }
 
+function recalcularResumenAcademicoEstudiante(estudiante: Estudiante): Estudiante {
+  const calificaciones = estudiante.calificaciones ?? [];
+  if (calificaciones.length === 0) return estudiante;
+
+  const nombresCursos = Array.from(
+    new Set([
+      ...estudiante.notas_por_curso.map((n) => n.curso),
+      ...calificaciones.map((c) => c.curso),
+    ]),
+  );
+
+  const notas_por_curso: NotaPorCurso[] = nombresCursos.map((curso) => {
+    const existente = estudiante.notas_por_curso.find((n) => n.curso === curso);
+    const b1 = calcularPromedioCurso(calificaciones, curso, 1).promedio;
+    const b2 = calcularPromedioCurso(calificaciones, curso, 2).promedio;
+    const b3 = calcularPromedioCurso(calificaciones, curso, 3).promedio;
+    const b4 = calcularPromedioCurso(calificaciones, curso, 4).promedio;
+    return {
+      curso,
+      B1: b1 ?? existente?.B1 ?? 0,
+      B2: b2 ?? existente?.B2 ?? 0,
+      B3: b3 ?? existente?.B3 ?? null,
+      B4: b4 ?? existente?.B4 ?? null,
+    };
+  });
+
+  const g1 = calcularPromedioGeneralBimestre(calificaciones, nombresCursos, 1).promedio;
+  const g2 = calcularPromedioGeneralBimestre(calificaciones, nombresCursos, 2).promedio;
+  const g3 = calcularPromedioGeneralBimestre(calificaciones, nombresCursos, 3).promedio;
+  const g4 = calcularPromedioGeneralBimestre(calificaciones, nombresCursos, 4).promedio;
+
+  return {
+    ...estudiante,
+    alumno: {
+      ...estudiante.alumno,
+      promedios_bimestre: {
+        B1: g1 ?? estudiante.alumno.promedios_bimestre.B1,
+        B2: g2 ?? estudiante.alumno.promedios_bimestre.B2,
+        B3: g3 ?? estudiante.alumno.promedios_bimestre.B3 ?? null,
+        B4: g4 ?? estudiante.alumno.promedios_bimestre.B4 ?? null,
+      },
+    },
+    notas_por_curso,
+  };
+}
+
 export async function cargarEstudiantesDesdeBackend() {
   try {
-    const response = await fetch(`${API_BASE_URL}/estudiantes?limit=200`);
-    if (!response.ok) return;
-    const data = await response.json();
+    const [configRes, estudiantesRes, seccionesRes] = await Promise.allSettled([
+      fetch(`${API_BASE_URL}/`),
+      fetch(`${API_BASE_URL}/estudiantes?limit=200`),
+      fetch(`${API_BASE_URL}/secciones`),
+    ]);
+
+    let bimestreActual = state.bimestreActual;
+    let totalBimestres = state.totalBimestres;
+    if (configRes.status === "fulfilled" && configRes.value.ok) {
+      const cfg = (await configRes.value.json()) as Record<string, unknown>;
+      if (typeof cfg.bimestre_actual === "number") bimestreActual = cfg.bimestre_actual;
+      if (typeof cfg.total_bimestres === "number") totalBimestres = cfg.total_bimestres;
+    }
+
+    let secciones = state.secciones;
+    if (seccionesRes.status === "fulfilled" && seccionesRes.value.ok) {
+      const seccionesData = (await seccionesRes.value.json()) as Seccion[];
+      if (Array.isArray(seccionesData)) secciones = seccionesData;
+    }
+
+    if (estudiantesRes.status !== "fulfilled" || !estudiantesRes.value.ok) {
+      state = { ...state, bimestreActual, totalBimestres, secciones };
+      emitChange();
+      return;
+    }
+
+    const data = await estudiantesRes.value.json();
     const items = Array.isArray(data)
       ? data
       : Array.isArray(data?.items)
@@ -209,10 +299,93 @@ export async function cargarEstudiantesDesdeBackend() {
     const estudiantesReales = items.map((row: Record<string, unknown>, index: number) =>
       mapearEstudianteBackend(row, index),
     );
-    state = { ...state, estudiantes: estudiantesReales };
+    state = { ...state, estudiantes: estudiantesReales, bimestreActual, totalBimestres, secciones };
     emitChange();
   } catch {
     // Si el backend FastAPI está apagado, mantiene los datos de demostración
+  }
+}
+
+export async function cargarHistorialEstudiante(idMatricula: string) {
+  try {
+    const resp = await fetch(`${API_BASE_URL}/estudiantes/${idMatricula}/historial`);
+    if (!resp.ok) return;
+    const data = (await resp.json()) as {
+      calificaciones?: Array<{
+        curso: string;
+        bimestre: number;
+        tipo_evaluacion: TipoEvaluacion;
+        fecha: string;
+        nota: number;
+      }>;
+      inasistencias_tardanzas_recientes?: Array<{
+        fecha: string;
+        estado: RegistroAsistencia["estado"];
+        hora_ingreso: string | null;
+        medio: RegistroAsistencia["medio"];
+      }>;
+      asistencias_recientes?: Array<{
+        fecha: string;
+        estado: RegistroAsistencia["estado"];
+        hora_ingreso: string | null;
+        medio: RegistroAsistencia["medio"];
+      }>;
+      asistencia_resumen?:
+        | Record<string, number>
+        | Array<{
+            estado: string;
+            total: number;
+          }>;
+    };
+    const calificacionesReales: Calificacion[] = (data.calificaciones ?? []).map((c) => ({
+      curso: c.curso,
+      bimestre: bimestreKey(c.bimestre),
+      tipo_evaluacion: c.tipo_evaluacion,
+      fecha: c.fecha,
+      nota: Number(c.nota),
+    }));
+
+    const listaAsistencia =
+      data.inasistencias_tardanzas_recientes ?? data.asistencias_recientes;
+    const asistenciasReales: RegistroAsistencia[] | null = Array.isArray(listaAsistencia)
+      ? listaAsistencia.map((a) => ({
+          fecha: a.fecha,
+          estado: a.estado,
+          hora_ingreso: a.hora_ingreso ?? null,
+          medio: a.medio,
+        }))
+      : null;
+
+    let inasistenciasReales: number | null = null;
+    if (Array.isArray(data.asistencia_resumen)) {
+      inasistenciasReales = data.asistencia_resumen
+        .filter((r) => r.estado === "Falta justificada" || r.estado === "Falta injustificada")
+        .reduce((sum, r) => sum + Number(r.total ?? 0), 0);
+    } else if (data.asistencia_resumen && typeof data.asistencia_resumen === "object") {
+      inasistenciasReales =
+        Number(data.asistencia_resumen["Falta justificada"] ?? 0) +
+        Number(data.asistencia_resumen["Falta injustificada"] ?? 0);
+    } else if (asistenciasReales !== null) {
+      inasistenciasReales = asistenciasReales.filter(
+        (a) => a.estado === "Falta justificada" || a.estado === "Falta injustificada",
+      ).length;
+    }
+
+    updateEstudiante(idMatricula, (estudiante) =>
+      recalcularResumenAcademicoEstudiante({
+        ...estudiante,
+        alumno: {
+          ...estudiante.alumno,
+          inasistencias:
+            inasistenciasReales !== null ? inasistenciasReales : estudiante.alumno.inasistencias,
+        },
+        asistencia_reciente:
+          asistenciasReales !== null ? asistenciasReales : estudiante.asistencia_reciente,
+        calificaciones: calificacionesReales,
+      }),
+    );
+  } catch {
+    // Backend no disponible
   }
 }
 
@@ -325,10 +498,12 @@ export async function registrarCalificacion(
   }
 
   // Actualizar estado local inmediatamente (UX optimista)
-  updateEstudiante(idMatricula, (estudiante) => ({
-    ...estudiante,
-    calificaciones: [...(estudiante.calificaciones ?? []), clone(calificacion)],
-  }));
+  updateEstudiante(idMatricula, (estudiante) =>
+    recalcularResumenAcademicoEstudiante({
+      ...estudiante,
+      calificaciones: [...(estudiante.calificaciones ?? []), clone(calificacion)],
+    }),
+  );
   agregarEvidencia(idMatricula, { tipo: "calificacion", nota: calificacion.nota });
 
   // Intentar persistir en backend y obtener riesgo real del ML
@@ -340,6 +515,7 @@ export async function registrarCalificacion(
         id_curso: extras?.idCursoBackend ?? null,
         curso: calificacion.curso,
         id_periodo: extras?.idPeriodo ?? null,
+        bimestre: normalizarBimestreNumero(calificacion.bimestre),
         tipo_evaluacion: calificacion.tipo_evaluacion,
         fecha: calificacion.fecha,
         nota: calificacion.nota,

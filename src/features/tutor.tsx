@@ -1,5 +1,21 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { getAccionesSugeridas, parsearFactoresRiesgo, registrarTutoria, useDataStore, type AccionTutoria, type DerivacionTutoria, type Estudiante, type Motivo, type RecalculoRiesgo } from "../data";
+import {
+  calcularPromedioCurso,
+  calcularPromedioGeneralBimestre,
+  ETIQUETAS_EVALUACION,
+  TIPOS_EVALUACION,
+  getAccionesSugeridas,
+  normalizarBimestreNumero,
+  parsearFactoresRiesgo,
+  registrarTutoria,
+  useDataStore,
+  type AccionTutoria,
+  type DerivacionTutoria,
+  type Estudiante,
+  type Motivo,
+  type RecalculoRiesgo,
+  type TipoEvaluacion,
+} from "../data";
 import { Button, HelpHint, Icon, PageHeading, RiskBadge, TrendIcon, calcularTendencia, formatearNivelPorcentaje, type IconName, type View } from "../components/common";
 import { displayFactorFamily, getStudentReasons, getTopRecommendation } from "./recommendations";
 
@@ -16,9 +32,12 @@ export function Dashboard({
   showAlert: boolean;
   dismissAlert: () => void;
 }) {
-  const { estudiantes, modelo } = useDataStore();
+  const { estudiantes: todosEstudiantes, modelo } = useDataStore();
   const [dashboardPage, setDashboardPage] = useState(1);
   const itemsPerPage = 10;
+
+  // Dashboard muestra todos los estudiantes (sin filtro por sección)
+  const estudiantes = todosEstudiantes;
 
   const riskCounts = {
     Bajo: estudiantes.filter((estudiante) => estudiante.riesgo.nivel === "Bajo").length,
@@ -129,7 +148,7 @@ export function Dashboard({
                     <td>
                       <div className="student-cell">
                         <span className="student-avatar">{student.alumno.nombre.split(" ").map((part) => part[0]).join("")}</span>
-                        <div><strong>{student.alumno.nombre}</strong><span>3.º Sec. · A</span></div>
+                        <div><strong>{student.alumno.nombre}</strong><span>{student.alumno.grado != null ? `${student.alumno.grado}.º Sec. · ${student.alumno.letra ?? "?"}` : "3.º Sec."}</span></div>
                       </div>
                     </td>
                     <td><span className={performance.includes("descenso") || performance === "Descendente" ? "down-text" : "trend-neutral"}><TrendIcon trend={performance} />{performance}</span></td>
@@ -242,17 +261,24 @@ export function Students({
   openHistory: (idMatricula: string) => void;
   openSolution: (idMatricula: string) => void;
 }) {
-  const { estudiantes } = useDataStore();
+  const { estudiantes: todosEstudiantes, secciones } = useDataStore();
   const [query, setQuery] = useState("");
   const [risk, setRisk] = useState("Todos");
+  const [seccionFiltro, setSeccionFiltro] = useState("Todas");
   const [studentsPage, setStudentsPage] = useState(1);
   const itemsPerPage = 10;
 
-  const filtered = estudiantes
+  // Letras disponibles según backend (o derivadas de estudiantes)
+  const letrasDisponibles = secciones.length > 0
+    ? secciones.map((s) => s.letra).sort()
+    : [...new Set(todosEstudiantes.map((s) => s.alumno.letra).filter(Boolean))].sort() as string[];
+
+  const filtered = todosEstudiantes
     .filter(
       (student) =>
         student.alumno.nombre.toLowerCase().includes(query.toLowerCase()) &&
-        (risk === "Todos" || student.riesgo.nivel === risk),
+        (risk === "Todos" || student.riesgo.nivel === risk) &&
+        (seccionFiltro === "Todas" || (student.alumno.letra ?? "?") === seccionFiltro),
     )
     .sort((a, b) => b.riesgo.probabilidad - a.riesgo.probabilidad);
 
@@ -263,9 +289,14 @@ export function Students({
     currentStudentsPage * itemsPerPage,
   );
 
+  const subtitle =
+    seccionFiltro === "Todas"
+      ? "Listado general de 3.º de Secundaria (todas las secciones)"
+      : `Listado de la sección 3.º de Secundaria – ${seccionFiltro}`;
+
   return (
     <>
-      <PageHeading title="Estudiantes" subtitle="Listado de la sección 3.º de Secundaria – A" />
+      <PageHeading title="Estudiantes" subtitle={subtitle} />
       <section className="card student-directory">
         <div className="directory-toolbar">
           <label className="search-box">
@@ -280,6 +311,28 @@ export function Students({
               aria-label="Buscar estudiante por nombre"
             />
           </label>
+          {/* Filtro de sección — sólo en esta tabla */}
+          {letrasDisponibles.length > 0 && (
+            <div className="section-filter-chips" role="group" aria-label="Filtrar por sección">
+              <button
+                type="button"
+                className={`section-chip${seccionFiltro === "Todas" ? " active" : ""}`}
+                onClick={() => { setSeccionFiltro("Todas"); setStudentsPage(1); }}
+              >
+                Todas
+              </button>
+              {letrasDisponibles.map((letra) => (
+                <button
+                  key={letra}
+                  type="button"
+                  className={`section-chip${seccionFiltro === letra ? " active" : ""}`}
+                  onClick={() => { setSeccionFiltro(letra); setStudentsPage(1); }}
+                >
+                  {letra}
+                </button>
+              ))}
+            </div>
+          )}
           <label className="filter-box">
             <Icon name="filter" size={17} />
             <span>Nivel de riesgo</span>
@@ -304,7 +357,7 @@ export function Students({
             <tbody>
               {paginatedStudents.map((student) => (
                 <tr key={student.alumno.id_matricula}>
-                  <td><div className="student-cell"><span className="student-avatar">{student.alumno.nombre.split(" ").map((part) => part[0]).join("")}</span><div><strong>{student.alumno.nombre}</strong><span>3.º Sec. · A</span></div></div></td>
+                  <td><div className="student-cell"><span className="student-avatar">{student.alumno.nombre.split(" ").map((part) => part[0]).join("")}</span><div><strong>{student.alumno.nombre}</strong><span>{student.alumno.grado != null ? `${student.alumno.grado}.º Sec. · ${student.alumno.letra ?? "?"}` : "3.º Sec."}</span></div></div></td>
                   <td>{student.alumno.codigo}</td>
                   <td><strong className="average-value">{Math.round(student.alumno.promedios_bimestre.B1)} → {Math.round(student.alumno.promedios_bimestre.B2)}</strong></td>
                   <td>{student.alumno.inasistencias}</td>
@@ -381,7 +434,7 @@ function StudentBanner({ student }: { student: Estudiante }) {
       <div>
         <p>Estudiante</p>
         <h2>{student.alumno.nombre}</h2>
-        <span>3.º de Secundaria – A · Código {student.alumno.codigo}</span>
+        <span>{student.alumno.grado != null ? `${student.alumno.grado}.º de Secundaria – ${student.alumno.letra ?? "?"}` : "3.º de Secundaria"} · Código {student.alumno.codigo}</span>
       </div>
       <div className="banner-risk">
         <span>Nivel actual</span>
@@ -686,42 +739,160 @@ export function AlertDetail({
   );
 }
 
-function PerformanceChart({ student }: { student: Estudiante }) {
-  const sessionGrades = student.calificaciones ?? [];
-  const currentAverage =
-    sessionGrades.length > 0
-      ? Math.round(sessionGrades.reduce((total, grade) => total + grade.nota, 0) / sessionGrades.length)
-      : null;
-  const points = [
-    { label: "Bimestre 1", value: Math.round(student.alumno.promedios_bimestre.B1) },
-    { label: "Bimestre 2", value: Math.round(student.alumno.promedios_bimestre.B2) },
-    ...(currentAverage === null ? [] : [{ label: "Actual (en curso)", value: currentAverage }]),
-  ];
-  const xPositions = points.length === 2 ? [85, 515] : [60, 300, 540];
-  const chartPoints = points.map((point, index) => ({
-    ...point,
-    x: xPositions[index],
-    y: 175 - point.value * 7.5,
+function PerformanceChart({
+  student,
+  cursoDrilldown,
+  bimestreDetalle,
+}: {
+  student: Estudiante;
+  cursoDrilldown: string | null;
+  bimestreDetalle: number;
+}) {
+  const calificaciones = student.calificaciones ?? [];
+
+  if (cursoDrilldown !== null) {
+    // ── Vista de barras para el curso y bimestre seleccionado ──────────
+    const detalle = calcularPromedioCurso(calificaciones, cursoDrilldown, bimestreDetalle);
+    const barras: {
+      key: string;
+      label: string;
+      value: number | null;
+      isAverage?: boolean;
+      subtext?: string;
+    }[] = [
+      { key: "Practica", label: "Práctica (30%)", value: detalle.evaluaciones.Practica },
+      { key: "Simulacro", label: "Simulacro (20%)", value: detalle.evaluaciones.Simulacro },
+      { key: "Examen", label: "Examen (50%)", value: detalle.evaluaciones.Examen },
+      {
+        key: "Promedio",
+        label: "Promedio",
+        value: detalle.promedio,
+        isAverage: true,
+        subtext: detalle.esParcial ? "promedio parcial" : undefined,
+      },
+    ];
+
+    return (
+      <div className="course-detail-chart" aria-label={`Detalle de ${cursoDrilldown} (B${bimestreDetalle})`}>
+        <div className="chart-wrap bar-detail-wrap">
+          <div className="chart-y">
+            {[20, 15, 10, 5, 0].map((v) => (
+              <span key={v}>{v}</span>
+            ))}
+          </div>
+          <div className="bar-detail-grid">
+            {barras.map((bar) => {
+              const heightPct = bar.value !== null ? Math.min(100, Math.max(0, (bar.value / 20) * 100)) : 0;
+              return (
+                <div className="bar-detail-col" key={bar.key}>
+                  <div className="bar-detail-track">
+                    {bar.value !== null ? (
+                      <div
+                        className={`bar-detail-fill ${bar.isAverage ? "is-average" : ""}`}
+                        style={{ height: `${heightPct}%` }}
+                      >
+                        <span className="bar-detail-val">{bar.value}</span>
+                      </div>
+                    ) : (
+                      <span className="bar-detail-empty">Sin nota</span>
+                    )}
+                  </div>
+                  <span className="bar-detail-label">{bar.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="course-eval-cards">
+          {barras.map((bar) => (
+            <div
+              key={bar.key}
+              className={`course-eval-card ${bar.isAverage ? "is-average" : ""}`}
+            >
+              <span className="course-eval-title">
+                {bar.isAverage ? "Promedio del curso" : bar.label}
+              </span>
+              <strong className={bar.value === null ? "is-missing" : ""}>
+                {bar.value !== null ? bar.value : bar.isAverage ? "pendiente" : "Sin nota"}
+              </strong>
+              {bar.subtext && <small className="partial-tag">{bar.subtext}</small>}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Vista general (todos los cursos) ───────────────────────────────
+  const pb = student.alumno.promedios_bimestre;
+  const bimConProm: { label: string; value: number }[] = [];
+  if (pb.B1) bimConProm.push({ label: "Bimestre 1", value: Math.round(pb.B1) });
+  if (pb.B2) bimConProm.push({ label: "Bimestre 2", value: Math.round(pb.B2) });
+  if (pb.B3 != null && pb.B3 > 0) bimConProm.push({ label: "Bimestre 3", value: Math.round(pb.B3) });
+  if (pb.B4 != null && pb.B4 > 0) bimConProm.push({ label: "Bimestre 4", value: Math.round(pb.B4) });
+
+  // Si hay calificaciones en sesión para bimestres no reflejados, calcular el promedio
+  const calBimestres = new Set(calificaciones.map((c) => normalizarBimestreNumero(c.bimestre)));
+  for (const bim of [3, 4]) {
+    if (
+      calBimestres.has(bim) &&
+      !bimConProm.find((p) => p.label === `Bimestre ${bim}`)
+    ) {
+      const pg = calcularPromedioGeneralBimestre(
+        calificaciones,
+        student.notas_por_curso.map((n) => n.curso),
+        bim,
+      );
+      if (pg.promedio !== null) {
+        const label = `Bimestre ${bim}${pg.esParcial ? " (parcial)" : ""}`;
+        bimConProm.push({ label, value: Math.round(pg.promedio) });
+      }
+    }
+  }
+
+  const nPts = bimConProm.length;
+  const svgWidth = 600;
+  const xPadding = 60;
+  const xPositions =
+    nPts === 1
+      ? [svgWidth / 2]
+      : bimConProm.map((_, i) => xPadding + (i * (svgWidth - xPadding * 2)) / (nPts - 1));
+  const chartPoints = bimConProm.map((p, i) => ({
+    ...p,
+    x: xPositions[i],
+    y: 175 - p.value * 7.5,
   }));
-  const path = chartPoints.map((point) => `${point.x},${point.y}`).join(" ");
+  const path = chartPoints.map((p) => `${p.x},${p.y}`).join(" ");
 
   return (
-    <div className="chart-wrap performance-chart" aria-label={`Rendimiento de ${student.alumno.nombre}`}>
-      <div className="chart-y">{[20, 15, 10, 5, 0].map((value) => <span key={value}>{value}</span>)}</div>
+    <div
+      className="chart-wrap performance-chart"
+      aria-label={`Rendimiento general de ${student.alumno.nombre}`}
+    >
+      <div className="chart-y">
+        {[20, 15, 10, 5, 0].map((v) => (
+          <span key={v}>{v}</span>
+        ))}
+      </div>
       <svg viewBox="0 0 600 220" role="img">
-        <title>Promedios de Bimestre 1, Bimestre 2{currentAverage === null ? "" : " y Actual en curso"}</title>
-        {[20, 15, 10, 5, 0].map((value) => {
-          const y = 175 - value * 7.5;
-          return <line key={value} x1="25" x2="575" y1={y} y2={y} className="grid-line" />;
+        <title>Promedios generales por bimestre</title>
+        {[20, 15, 10, 5, 0].map((v) => {
+          const y = 175 - v * 7.5;
+          return (
+            <line key={v} x1="25" x2="575" y1={y} y2={y} className="grid-line" />
+          );
         })}
         <polyline points={path} className="area-line" />
-        {chartPoints.map((point) => (
-          <g key={point.label}>
-            <circle cx={point.x} cy={point.y} r="6" className="chart-point" />
-            <text x={point.x} y={point.y - 15} textAnchor="middle" className="chart-value">
-              {Math.round(point.value)}
+        {chartPoints.map((p) => (
+          <g key={p.label}>
+            <circle cx={p.x} cy={p.y} r="6" className="chart-point" />
+            <text x={p.x} y={p.y - 15} textAnchor="middle" className="chart-value">
+              {Math.round(p.value)}
             </text>
-            <text x={point.x} y="207" textAnchor="middle" className="axis-label">{point.label}</text>
+            <text x={p.x} y="207" textAnchor="middle" className="axis-label">
+              {p.label}
+            </text>
           </g>
         ))}
       </svg>
@@ -848,6 +1019,45 @@ export function History({
   openFollowUp: () => void;
   canCommunicate: boolean;
 }) {
+  const { bimestreActual, totalBimestres } = useDataStore();
+  const [cursoDrilldown, setCursoDrilldown] = useState<string | null>(null);
+  const [bimestreDetalle, setBimestreDetalle] = useState<number>(() => bimestreActual);
+  const [attendanceFilter, setAttendanceFilter] = useState<
+    "Todos" | "Presente" | "Tardanza" | "Faltas" | "Falta justificada" | "Falta injustificada"
+  >("Todos");
+  const [attendancePage, setAttendancePage] = useState(1);
+  const calificaciones = student.calificaciones ?? [];
+
+  useEffect(() => {
+    setAttendancePage(1);
+  }, [student.alumno.id_matricula, attendanceFilter]);
+
+  const totalPresentes = student.asistencia_reciente.filter((a) => a.estado === "Presente").length;
+  const totalTardanzas = student.asistencia_reciente.filter((a) => a.estado === "Tardanza").length;
+  const totalJustificadas = student.asistencia_reciente.filter(
+    (a) => a.estado === "Falta justificada",
+  ).length;
+  const totalInjustificadas = student.asistencia_reciente.filter(
+    (a) => a.estado === "Falta injustificada",
+  ).length;
+  const filteredAttendance = student.asistencia_reciente.filter((a) => {
+    if (attendanceFilter === "Todos") return true;
+    if (attendanceFilter === "Faltas") {
+      return a.estado === "Falta justificada" || a.estado === "Falta injustificada";
+    }
+    return a.estado === attendanceFilter;
+  });
+  const attendancePageSize = 10;
+  const totalAttendancePages = Math.max(
+    1,
+    Math.ceil(filteredAttendance.length / attendancePageSize),
+  );
+  const safeAttendancePage = Math.min(attendancePage, totalAttendancePages);
+  const paginatedAttendance = filteredAttendance.slice(
+    (safeAttendancePage - 1) * attendancePageSize,
+    safeAttendancePage * attendancePageSize,
+  );
+
   const b1 = Math.round(student.alumno.promedios_bimestre.B1);
   const b2 = Math.round(student.alumno.promedios_bimestre.B2);
   const averageChange = b2 - b1;
@@ -889,6 +1099,31 @@ export function History({
     })),
   ].sort((a, b) => b.date.localeCompare(a.date));
 
+  // Compilar lista de cursos con notas (de notas_por_curso + calificaciones de sesión)
+  const nombresCursos = Array.from(
+    new Set([
+      ...student.notas_por_curso.map((n) => n.curso),
+      ...calificaciones.map((c) => c.curso),
+    ]),
+  );
+
+  // Bimestres visibles en la tabla (hasta bimestreActual o los que tengan datos)
+  const colHeaders = Array.from({ length: totalBimestres }, (_, i) => i + 1).filter(
+    (b) =>
+      b <= bimestreActual ||
+      nombresCursos.some(
+        (curso) => calcularPromedioCurso(calificaciones, curso, b).tieneNotas,
+      ),
+  );
+  const bimestresFiltro = Array.from({ length: totalBimestres }, (_, i) => i + 1).filter(
+    (b) =>
+      b <= bimestreActual ||
+      nombresCursos.some(
+        (curso) => calcularPromedioCurso(calificaciones, curso, b).tieneNotas,
+      ),
+  );
+  const cursoActivo = cursoDrilldown;
+
   return (
     <>
       <PageHeading
@@ -901,24 +1136,130 @@ export function History({
       <section className="history-grid">
         <article className="card chart-card wide">
           <div className="card-header">
-            <div><p className="section-label">Rendimiento académico</p><h2>Promedio del Bimestre 1 al Bimestre 2</h2><span>{averageChange < 0 ? `El promedio bajó ${Math.abs(averageChange)} ${Math.abs(averageChange) === 1 ? "punto" : "puntos"} entre el Bimestre 1 y el Bimestre 2.` : averageChange > 0 ? `El promedio subió ${averageChange} ${averageChange === 1 ? "punto" : "puntos"} entre el Bimestre 1 y el Bimestre 2.` : "El promedio se mantuvo entre ambos bimestres."}</span></div>
-            <span className="trend-chip"><TrendIcon trend={calcularTendencia(b1, b2)} /> {calcularTendencia(b1, b2)}</span>
+            <div>
+              <p className="section-label">Rendimiento académico</p>
+              <h2>
+                {cursoActivo
+                  ? `Detalle de ${cursoActivo} (B${bimestreDetalle})`
+                  : "Promedio general por bimestre"}
+              </h2>
+              {cursoActivo ? (
+                <span>Evaluaciones ponderadas: Práctica 30 %, Simulacro 20 %, Examen 50 %.</span>
+              ) : (
+                <span>
+                  {averageChange < 0
+                    ? `El promedio bajó ${Math.abs(averageChange)} ${Math.abs(averageChange) === 1 ? "punto" : "puntos"} entre Bim. 1 y Bim. 2.`
+                    : averageChange > 0
+                      ? `El promedio subió ${averageChange} ${averageChange === 1 ? "punto" : "puntos"} entre Bim. 1 y Bim. 2.`
+                      : "El promedio se mantuvo entre Bim. 1 y Bim. 2."}
+                </span>
+              )}
+            </div>
+            <div className="course-header-actions">
+              {cursoActivo ? (
+                <>
+                  <select
+                    aria-label="Filtrar por bimestre"
+                    className="bimester-filter-select"
+                    value={bimestreDetalle}
+                    onChange={(e) => setBimestreDetalle(Number(e.target.value))}
+                  >
+                    {bimestresFiltro.map((b) => (
+                      <option key={b} value={b}>
+                        Bimestre {b}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="back-general-btn"
+                    onClick={() => setCursoDrilldown(null)}
+                  >
+                    ← Vista general (todos los cursos)
+                  </button>
+                </>
+              ) : (
+                <span className="trend-chip">
+                  <TrendIcon trend={calcularTendencia(b1, b2)} /> {calcularTendencia(b1, b2)}
+                </span>
+              )}
+            </div>
           </div>
-          <PerformanceChart student={student} />
+
+          <PerformanceChart
+            student={student}
+            cursoDrilldown={cursoActivo}
+            bimestreDetalle={bimestreDetalle}
+          />
+
           <div className="course-table">
-            <div className="card-header"><div><h2>Promedio por curso</h2><p>Escala de 0 a 20. Menos de 11 se considera desaprobado.</p></div></div>
+            <div className="card-header">
+              <div>
+                <h2>Promedio por curso</h2>
+                <p>
+                  Escala de 0 a 20 (Práctica 30 % · Simulacro 20 % · Examen 50 %). Haz clic en un curso para ver sus evaluaciones.
+                </p>
+              </div>
+            </div>
             <div className="table-scroll">
               <table>
-                <thead><tr><th>Curso</th><th title="Bimestre 1">Bim. 1</th><th title="Bimestre 2">Bim. 2</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Curso</th>
+                    {colHeaders.map((b) => (
+                      <th key={b} title={`Bimestre ${b}`}>
+                        Bim. {b}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
                 <tbody>
-                  {student.notas_por_curso.map((course) => {
-                    const notaB1 = Math.round(course.B1);
-                    const notaB2 = Math.round(course.B2);
+                  {nombresCursos.map((curso) => {
+                    const npk = student.notas_por_curso.find((n) => n.curso === curso);
+                    const isSelected = curso === cursoActivo;
                     return (
-                      <tr key={course.curso}>
-                        <td><strong>{course.curso}</strong></td>
-                        <td className={notaB1 < 11 ? "failing-grade" : ""}>{notaB1}</td>
-                        <td className={notaB2 < 11 ? "failing-grade" : ""}>{notaB2}</td>
+                      <tr
+                        key={curso}
+                        onClick={() => {
+                          if (isSelected) {
+                            setCursoDrilldown(null);
+                          } else {
+                            setCursoDrilldown(curso);
+                          }
+                        }}
+                        className={isSelected ? "course-row-selected" : "course-row-clickable"}
+                        title="Clic para ver evaluaciones del curso"
+                      >
+                        <td>
+                          <strong>{curso}</strong>
+                        </td>
+                        {colHeaders.map((b) => {
+                          const detalle = calcularPromedioCurso(calificaciones, curso, b);
+                          let nota: number | null = detalle.promedio;
+                          if (nota === null && npk && calificaciones.length === 0) {
+                            nota = b === 1 ? npk.B1 : b === 2 ? npk.B2 : null;
+                          }
+                          if (nota === null) {
+                            return (
+                              <td key={b} className="grade-pending">
+                                pendiente
+                              </td>
+                            );
+                          }
+                          return (
+                            <td key={b} className={nota < 11 ? "failing-grade" : ""}>
+                              {nota}
+                              {detalle.esParcial && (
+                                <small
+                                  className="partial-asterisk"
+                                  title="Promedio parcial: faltan tipos de evaluación"
+                                >
+                                  {" "}(parcial)
+                                </small>
+                              )}
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   })}
@@ -931,31 +1272,116 @@ export function History({
           <div className="card-header">
             <div>
               <p className="section-label">Asistencia</p>
-              <h2>Registro de asistencia reciente</h2>
-              <span>Total de inasistencias: {student.alumno.inasistencias}</span>
+              <h2>Registro de asistencia de {student.alumno.nombre}</h2>
+              <span>
+                Total de inasistencias: {student.alumno.inasistencias} · Registros totales:{" "}
+                {student.asistencia_reciente.length}
+              </span>
             </div>
             <span className="access-note"><Icon name="info" size={15} /> Vista disponible solo para tutor y coordinación.</span>
+          </div>
+          <div className="attendance-toolbar">
+            <div className="attendance-summary-chips">
+              <button
+                type="button"
+                className={`attendance-filter-chip ${attendanceFilter === "Todos" ? "active" : ""}`}
+                onClick={() => setAttendanceFilter("Todos")}
+              >
+                Todos ({student.asistencia_reciente.length})
+              </button>
+              <button
+                type="button"
+                className={`attendance-filter-chip ${attendanceFilter === "Presente" ? "active" : ""}`}
+                onClick={() => setAttendanceFilter("Presente")}
+              >
+                Asistió ({totalPresentes})
+              </button>
+              <button
+                type="button"
+                className={`attendance-filter-chip ${attendanceFilter === "Tardanza" ? "active" : ""}`}
+                onClick={() => setAttendanceFilter("Tardanza")}
+              >
+                Tardanzas ({totalTardanzas})
+              </button>
+              <button
+                type="button"
+                className={`attendance-filter-chip ${attendanceFilter === "Faltas" ? "active" : ""}`}
+                onClick={() => setAttendanceFilter("Faltas")}
+              >
+                Faltas ({totalInjustificadas + totalJustificadas})
+              </button>
+              <button
+                type="button"
+                className={`attendance-filter-chip ${attendanceFilter === "Falta justificada" ? "active" : ""}`}
+                onClick={() => setAttendanceFilter("Falta justificada")}
+              >
+                Justificados ({totalJustificadas})
+              </button>
+              <button
+                type="button"
+                className={`attendance-filter-chip ${attendanceFilter === "Falta injustificada" ? "active" : ""}`}
+                onClick={() => setAttendanceFilter("Falta injustificada")}
+              >
+                Injustificados ({totalInjustificadas})
+              </button>
+            </div>
           </div>
           <div className="table-scroll">
             <table>
               <thead><tr><th>Fecha</th><th>Ingreso</th><th>Estado</th><th>Medio</th></tr></thead>
               <tbody>
-                {student.asistencia_reciente.map((attendance) => (
-                  <tr key={attendance.fecha}>
-                    <td>{attendance.fecha}</td>
-                    <td>{attendance.hora_ingreso ?? "—"}</td>
-                    <td>
-                      <span className={`attendance-status attendance-${attendance.estado.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <Icon name={attendance.estado === "Presente" ? "check" : "info"} size={14} />
-                        {attendance.estado}
-                      </span>
+                {paginatedAttendance.length > 0 ? (
+                  paginatedAttendance.map((attendance, index) => (
+                    <tr key={`${attendance.fecha}-${index}`}>
+                      <td>{attendance.fecha}</td>
+                      <td>{attendance.hora_ingreso ?? "—"}</td>
+                      <td>
+                        <span className={`attendance-status attendance-${attendance.estado.toLowerCase().replace(/\s+/g, "-")}`}>
+                          <Icon name={attendance.estado === "Presente" ? "check" : "info"} size={14} />
+                          {attendance.estado}
+                        </span>
+                      </td>
+                      <td>{attendance.medio === "Lector IoT" ? "Lector de ingreso" : attendance.medio}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="empty-history">
+                      No hay registros de asistencia para este filtro.
                     </td>
-                    <td>{attendance.medio === "Lector IoT" ? "Lector de ingreso" : attendance.medio}</td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
+          {filteredAttendance.length > attendancePageSize && (
+            <div className="attendance-pagination">
+              <span>
+                Mostrando {(safeAttendancePage - 1) * attendancePageSize + 1}–
+                {Math.min(safeAttendancePage * attendancePageSize, filteredAttendance.length)} de{" "}
+                {filteredAttendance.length} registros
+              </span>
+              <div className="attendance-pagination-controls">
+                <button
+                  type="button"
+                  disabled={safeAttendancePage <= 1}
+                  onClick={() => setAttendancePage((p) => Math.max(1, p - 1))}
+                >
+                  Anterior
+                </button>
+                <span>
+                  Página {safeAttendancePage} de {totalAttendancePages}
+                </span>
+                <button
+                  type="button"
+                  disabled={safeAttendancePage >= totalAttendancePages}
+                  onClick={() => setAttendancePage((p) => Math.min(totalAttendancePages, p + 1))}
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
+          )}
         </article>
         <article className="card risk-history-card">
           <div className="card-header"><div><p className="section-label">Nivel de riesgo</p><h2>Evolución del riesgo</h2><span>Nivel inicial y actualizaciones con nueva información.</span></div></div>
