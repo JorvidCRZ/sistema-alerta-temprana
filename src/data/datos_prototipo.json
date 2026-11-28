@@ -76,7 +76,9 @@
       { "fecha": "2026-09-28", "tipo": "Socioemocional", "deriva_a_tutor": true }
     ],
     "tutorias": [],
-    "derivaciones": [],
+    "derivaciones": [
+      { "id": "DER-003", "fecha": "2026-11-22", "curso": "Orientación", "motivo": "Socioemocional", "estado": "Pendiente", "fecha_revision": null, "accion_tutor": "", "docente": "Luis Mendoza", "comentario": "La estudiante mostró una preocupación socioemocional que requiere escucha y orientación." }
+    ],
     "asistencia_reciente": [],
     "notas_por_curso": [
       { "curso": "Matemática", "B1": 14, "B2": 14 },
