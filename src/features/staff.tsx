@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { actualizarDerivacion, crearDerivacion, estimarRiesgoSimulado, getEstudiantes, notificarTutor, registrarAsistencia, registrarCalificacion, registrarObservacion, registrarTutoria, useDataStore, type AccionTutoria, type DerivacionTutoria, type EstadoAsistencia, type TipoEvaluacion, type TipoObservacion, type Usuario } from "../data";
+import { useState, type FormEvent } from "react";
+import { actualizarDerivacion, bimestreACodigo, crearDerivacion, estimarRiesgoSimulado, getEstudiantes, notificarTutor, registrarAsistencia, registrarCalificacion, registrarObservacion, registrarTutoria, useDataStore, type AccionTutoria, type BimestreCodigo, type DerivacionTutoria, type EstadoAsistencia, type TipoEvaluacion, type TipoObservacion, type Usuario } from "../data";
 import { Button, HelpHint, Icon, PageHeading, RiskBadge, TrendIcon, type IconName, type View } from "../components/common";
 import { getTopRecommendation } from "./recommendations";
 
@@ -258,178 +258,6 @@ export function TeacherSection({ activeUser }: { activeUser: Usuario }) {
 
 type EvidenceTab = "nota" | "asistencia" | "observacion";
 
-function StudentCombobox({
-  estudiantes,
-  value,
-  onChange,
-}: {
-  estudiantes: ReturnType<typeof useDataStore>["estudiantes"];
-  value: string;
-  onChange: (idMatricula: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleOutsideClick = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, []);
-
-  const selected = estudiantes.find((s) => s.alumno.id_matricula === value);
-
-  const normalize = (text: string) =>
-    text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-  const filtered = estudiantes.filter((s) => {
-    const target = normalize(`${s.alumno.nombre} ${s.alumno.codigo}`);
-    return target.includes(normalize(query));
-  });
-
-  return (
-    <div ref={containerRef} className="form-field" style={{ position: "relative" }}>
-      <span>Alumno</span>
-
-      <button
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          width: "100%",
-          padding: "0.7rem 0.9rem",
-          borderRadius: "10px",
-          border: "1px solid var(--border, #2b3245)",
-          background: "var(--surface-2, #121622)",
-          color: "inherit",
-          font: "inherit",
-          cursor: "pointer",
-          textAlign: "left",
-        }}
-      >
-        <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <Icon name="search" size={16} />
-          {selected
-            ? `${selected.alumno.nombre} · ${selected.alumno.codigo}`
-            : "Seleccionar alumno..."}
-        </span>
-        <Icon name="chevron" size={16} />
-      </button>
-
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            right: 0,
-            marginTop: "6px",
-            background: "var(--surface, #161b29)",
-            border: "1px solid var(--border, #2b3245)",
-            borderRadius: "10px",
-            boxShadow: "0 12px 28px rgba(0,0,0,0.45)",
-            zIndex: 50,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: "0.6rem 0.85rem",
-              borderBottom: "1px solid var(--border, #2b3245)",
-              background: "var(--surface-2, #111520)",
-            }}
-          >
-            <Icon name="search" size={16} />
-            <input
-              type="text"
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar por nombre, apellido o código (ej. EST-0015)..."
-              style={{
-                width: "100%",
-                border: "none",
-                outline: "none",
-                background: "transparent",
-                color: "inherit",
-                font: "inherit",
-              }}
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "inherit",
-                  cursor: "pointer",
-                  padding: 0,
-                }}
-              >
-                <Icon name="close" size={15} />
-              </button>
-            )}
-          </div>
-
-          <ul
-            style={{
-              listStyle: "none",
-              margin: 0,
-              padding: "4px 0",
-              maxHeight: "240px",
-              overflowY: "auto",
-            }}
-          >
-            {filtered.length > 0 ? (
-              filtered.map((student) => {
-                const isSelected = student.alumno.id_matricula === value;
-                return (
-                  <li
-                    key={student.alumno.id_matricula}
-                    onClick={() => {
-                      onChange(student.alumno.id_matricula);
-                      setOpen(false);
-                      setQuery("");
-                    }}
-                    style={{
-                      padding: "0.6rem 0.9rem",
-                      cursor: "pointer",
-                      background: isSelected ? "rgba(99, 102, 241, 0.22)" : "transparent",
-                      fontWeight: isSelected ? 600 : 400,
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) e.currentTarget.style.background = "transparent";
-                    }}
-                  >
-                    {student.alumno.nombre} · <small>{student.alumno.codigo}</small>
-                  </li>
-                );
-              })
-            ) : (
-              <li style={{ padding: "0.9rem", opacity: 0.7, textAlign: "center" }}>
-                No se encontraron alumnos con "{query}"
-              </li>
-            )}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
   const { cursos, estudiantes, bimestreActual, totalBimestres } = useDataStore();
   const bimestresDisponibles = Array.from(
@@ -631,11 +459,16 @@ export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
           ))}
         </div>
         <div className="evidence-form-wrap">
-          <StudentCombobox
-            estudiantes={estudiantes}
-            value={studentId}
-            onChange={(nuevoId) => setStudentId(nuevoId)}
-          />
+          <label className="form-field">
+            <span>Alumno</span>
+            <select value={studentId} onChange={(event) => setStudentId(event.target.value)}>
+              {estudiantes.map((student) => (
+                <option value={student.alumno.id_matricula} key={student.alumno.id_matricula}>
+                  {student.alumno.nombre} · {student.alumno.codigo}
+                </option>
+              ))}
+            </select>
+          </label>
 
           {tab === "nota" && (
             <form className="evidence-form" onSubmit={submitGrade}>
@@ -828,3 +661,4 @@ export function AccessDenied({ goBack }: { goBack: () => void }) {
     </section>
   );
 }
+
