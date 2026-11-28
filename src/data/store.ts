@@ -262,10 +262,11 @@ function recalcularResumenAcademicoEstudiante(estudiante: Estudiante): Estudiant
 
 export async function cargarEstudiantesDesdeBackend() {
   try {
-    const [configRes, estudiantesRes, seccionesRes] = await Promise.allSettled([
+    const [configRes, estudiantesRes, seccionesRes, matriculasSecRes] = await Promise.allSettled([
       fetch(`${API_BASE_URL}/`),
       fetch(`${API_BASE_URL}/estudiantes?limit=200`),
       fetch(`${API_BASE_URL}/secciones`),
+      fetch(`${API_BASE_URL}/matriculas-seccion`),
     ]);
 
     let bimestreActual = state.bimestreActual;
@@ -282,6 +283,12 @@ export async function cargarEstudiantesDesdeBackend() {
       if (Array.isArray(seccionesData)) secciones = seccionesData;
     }
 
+    let mapaSeccion: Record<string, string> = {};
+    if (matriculasSecRes.status === "fulfilled" && matriculasSecRes.value.ok) {
+      const mapData = (await matriculasSecRes.value.json()) as Record<string, string>;
+      if (mapData && typeof mapData === "object") mapaSeccion = mapData;
+    }
+
     if (estudiantesRes.status !== "fulfilled" || !estudiantesRes.value.ok) {
       state = { ...state, bimestreActual, totalBimestres, secciones };
       emitChange();
@@ -296,9 +303,19 @@ export async function cargarEstudiantesDesdeBackend() {
         : [];
     if (items.length === 0) return;
 
-    const estudiantesReales = items.map((row: Record<string, unknown>, index: number) =>
-      mapearEstudianteBackend(row, index),
-    );
+    const estudiantesReales = items.map((row: Record<string, unknown>, index: number) => {
+      const idStr = String(row.id_matricula ?? index + 1);
+      const secCod = mapaSeccion[idStr];
+      const enrichedRow =
+        row.letra == null && secCod
+          ? {
+              ...row,
+              grado: row.grado ?? Number(secCod.slice(0, -1)),
+              letra: secCod.slice(-1),
+            }
+          : row;
+      return mapearEstudianteBackend(enrichedRow, index);
+    });
     state = { ...state, estudiantes: estudiantesReales, bimestreActual, totalBimestres, secciones };
     emitChange();
   } catch {
