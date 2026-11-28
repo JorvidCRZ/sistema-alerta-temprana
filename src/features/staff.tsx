@@ -274,9 +274,16 @@ export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
   const [observationType, setObservationType] = useState<TipoObservacion>("Leve");
   const [comment, setComment] = useState("");
   const [referToTutor, setReferToTutor] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string; levelRaised?: boolean } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string; levelRaised?: boolean; riesgoMsg?: string } | null>(null);
 
-  const saveEvidence = (action: () => void) => {
+  const NIVEL_ORDER: Record<string, number> = { Bajo: 0, Medio: 1, Alto: 2 };
+
+  /**
+   * Ejecuta la acción de guardado (async), compara el riesgo antes/después
+   * y muestra el aviso correspondiente con el nombre del alumno y los niveles.
+   */
+  const saveEvidence = async (action: () => Promise<{ nivelAnterior: string | null; nivelNuevo: string; fueBackend: boolean } | null>) => {
     const beforeStudent = getEstudiantes().find(
       (student) => student.alumno.id_matricula === studentId,
     );
@@ -285,21 +292,30 @@ export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
       return false;
     }
 
-    const beforeRisk = estimarRiesgoSimulado(beforeStudent);
+    const nivelLocalAntes = beforeStudent.riesgo.nivel;
+    setSaving(true);
     try {
-      action();
-      const updatedStudent = getEstudiantes().find(
-        (student) => student.alumno.id_matricula === studentId,
-      );
-      if (!updatedStudent) throw new Error("No se encontró el estudiante actualizado.");
-      const afterRisk = estimarRiesgoSimulado(updatedStudent);
-      const levelOrder = { Bajo: 0, Medio: 1, Alto: 2 };
-      const levelRaised = levelOrder[afterRisk.nivel] > levelOrder[beforeRisk.nivel];
+      const resultado = await action();
+      if (!resultado) return false;
+
+      const { nivelAnterior, nivelNuevo, fueBackend } = resultado;
+      const nivelPrevio = nivelAnterior ?? nivelLocalAntes;
+      const levelRaised = (NIVEL_ORDER[nivelNuevo] ?? 0) > (NIVEL_ORDER[nivelPrevio] ?? 0);
+
       if (levelRaised) notificarTutor();
+
+      let riesgoMsg: string | undefined;
+      if (nivelPrevio !== nivelNuevo) {
+        riesgoMsg = `Riesgo de ${beforeStudent.alumno.nombre}: ${nivelPrevio} → ${nivelNuevo}`;
+      }
+
       setFeedback({
         type: "success",
-        text: "Evidencia guardada correctamente.",
+        text: fueBackend
+          ? "Evidencia guardada y riesgo recalculado por el modelo ML."
+          : "Evidencia guardada (estimación local; backend no disponible).",
         levelRaised,
+        riesgoMsg,
       });
       return true;
     } catch (error) {
@@ -308,36 +324,61 @@ export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
         text: error instanceof Error ? error.message : "No se pudo guardar la evidencia.",
       });
       return false;
+    } finally {
+      setSaving(false);
     }
   };
 
-  const submitGrade = (event: FormEvent) => {
+  const submitGrade = async (event: FormEvent) => {
     event.preventDefault();
     const numericGrade = Number(grade);
     if (grade === "" || !Number.isFinite(numericGrade) || numericGrade < 0 || numericGrade > 20) {
       setFeedback({ type: "error", text: "La nota debe estar entre 0 y 20." });
       return;
     }
-    if (saveEvidence(() => registrarCalificacion(studentId, {
-      fecha: date,
-      curso: teacherCourse,
-      bimestre: "B2",
-      tipo_evaluacion: evaluationType,
-      nota: numericGrade,
-    }))) setGrade("");
+
+    const nivelAntes = getEstudiantes().find((s) => s.alumno.id_matricula === studentId)?.riesgo.nivel ?? "Bajo";
+
+    const ok = await saveEvidence(async () => {
+      const riesgoBackend = await registrarCalificacion(studentId, {
+        fecha: date,
+        curso: teacherCourse,
+        bimestre: "B2",
+        tipo_evaluacion: evaluationType,
+        nota: numericGrade,
+      });
+      const nivelNuevo = getEstudiantes().find((s) => s.alumno.id_matricula === studentId)?.riesgo.nivel ?? "Bajo";
+      return {
+        nivelAnterior: riesgoBackend?.nivel_anterior ?? nivelAntes,
+        nivelNuevo: riesgoBackend?.nivel ?? nivelNuevo,
+        fueBackend: riesgoBackend !== null,
+      };
+    });
+
+    if (ok) setGrade("");
   };
 
-  const submitAttendance = (event: FormEvent) => {
+  const submitAttendance = async (event: FormEvent) => {
     event.preventDefault();
-    saveEvidence(() => registrarAsistencia(studentId, {
-      fecha: date,
-      estado: attendanceStatus,
-      hora_ingreso: null,
-      medio: "Manual",
-    }));
+    const nivelAntes = getEstudiantes().find((s) => s.alumno.id_matricula === studentId)?.riesgo.nivel ?? "Bajo";
+
+    await saveEvidence(async () => {
+      const riesgoBackend = await registrarAsistencia(studentId, {
+        fecha: date,
+        estado: attendanceStatus,
+        hora_ingreso: null,
+        medio: "Manual",
+      });
+      const nivelNuevo = getEstudiantes().find((s) => s.alumno.id_matricula === studentId)?.riesgo.nivel ?? "Bajo";
+      return {
+        nivelAnterior: riesgoBackend?.nivel_anterior ?? nivelAntes,
+        nivelNuevo: riesgoBackend?.nivel ?? nivelNuevo,
+        fueBackend: riesgoBackend !== null,
+      };
+    });
   };
 
-  const submitObservation = (event: FormEvent) => {
+  const submitObservation = async (event: FormEvent) => {
     event.preventDefault();
     if (!comment.trim()) {
       setFeedback({ type: "error", text: "Escribe un comentario para la observación." });
@@ -348,8 +389,10 @@ export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
       Grave: "Conducta grave que requiere seguimiento",
       Socioemocional: "Señal socioemocional que requiere acompañamiento",
     };
-    if (saveEvidence(() => {
-      registrarObservacion(studentId, {
+    const nivelAntes = getEstudiantes().find((s) => s.alumno.id_matricula === studentId)?.riesgo.nivel ?? "Bajo";
+
+    const ok = await saveEvidence(async () => {
+      const riesgoBackend = await registrarObservacion(studentId, {
         fecha: date,
         tipo: observationType,
         deriva_a_tutor: referToTutor,
@@ -367,7 +410,15 @@ export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
           comentario: comment.trim(),
         });
       }
-    })) {
+      const nivelNuevo = getEstudiantes().find((s) => s.alumno.id_matricula === studentId)?.riesgo.nivel ?? "Bajo";
+      return {
+        nivelAnterior: riesgoBackend?.nivel_anterior ?? nivelAntes,
+        nivelNuevo: riesgoBackend?.nivel ?? nivelNuevo,
+        fueBackend: riesgoBackend !== null,
+      };
+    });
+
+    if (ok) {
       setComment("");
       setReferToTutor(false);
     }
@@ -416,7 +467,7 @@ export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
               <label className="form-field"><span>Tipo de evaluación</span><select value={evaluationType} onChange={(event) => setEvaluationType(event.target.value as TipoEvaluacion)}><option value="Practica">Práctica</option><option>Simulacro</option><option>Examen</option></select></label>
               <label className="form-field"><span>Fecha</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label>
               <label className="form-field"><span>Nota</span><input type="number" min="0" max="20" step="0.1" value={grade} onChange={(event) => setGrade(event.target.value)} placeholder="0–20" required /></label>
-              <div className="evidence-submit"><Button type="submit">Guardar nota</Button></div>
+              <div className="evidence-submit"><Button type="submit" disabled={saving}>{saving ? "Guardando…" : "Guardar nota"}</Button></div>
             </form>
           )}
 
@@ -425,7 +476,7 @@ export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
               <label className="form-field"><span>Fecha</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label>
               <label className="form-field"><span>Estado</span><select value={attendanceStatus} onChange={(event) => setAttendanceStatus(event.target.value as EstadoAsistencia)}><option>Presente</option><option>Tardanza</option><option>Falta justificada</option><option>Falta injustificada</option></select></label>
               <label className="form-field"><span>Medio</span><input value="Manual" readOnly /></label>
-              <div className="evidence-submit"><Button type="submit">Guardar asistencia</Button></div>
+              <div className="evidence-submit"><Button type="submit" disabled={saving}>{saving ? "Guardando…" : "Guardar asistencia"}</Button></div>
             </form>
           )}
 
@@ -439,7 +490,7 @@ export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
               }}><option>Positiva</option><option>Leve</option><option>Grave</option><option>Socioemocional</option></select></label>
               <label className="form-field full-field"><span>Comentario</span><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Describe la evidencia de manera objetiva y respetuosa." required /></label>
               <label className={`derive-check ${observationType === "Positiva" ? "disabled" : ""}`}><input type="checkbox" checked={referToTutor} disabled={observationType === "Positiva"} onChange={(event) => setReferToTutor(event.target.checked)} /><span>Derivar al tutor</span></label>
-              <div className="evidence-submit"><Button type="submit">Guardar observación</Button></div>
+              <div className="evidence-submit"><Button type="submit" disabled={saving}>{saving ? "Guardando…" : "Guardar observación"}</Button></div>
             </form>
           )}
 
@@ -448,7 +499,14 @@ export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
               <Icon name={feedback.type === "success" ? "check" : "info"} size={18} />
               <div>
                 <strong>{feedback.text}</strong>
-                {feedback.levelRaised && <p>Esta evidencia fue considerada; el tutor revisará el caso.</p>}
+                {feedback.riesgoMsg && (
+                  <p style={{ marginTop: "0.25rem", fontWeight: 600 }}>
+                    ⚠️ {feedback.riesgoMsg}
+                  </p>
+                )}
+                {feedback.levelRaised && !feedback.riesgoMsg && (
+                  <p>Esta evidencia fue considerada; el tutor revisará el caso.</p>
+                )}
               </div>
             </div>
           )}

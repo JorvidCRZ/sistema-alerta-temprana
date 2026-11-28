@@ -29,6 +29,17 @@ import type {
 
 const API_BASE_URL = "http://127.0.0.1:8000";
 
+/** Respuesta de riesgo que devuelven los endpoints de evidencias del backend. */
+interface RiesgoBackend {
+  id_matricula: number;
+  probabilidad: number;
+  nivel: string;
+  nivel_anterior: string | null;
+  nivel_cambio: boolean;
+  factores: string;
+  fecha_prediccion: string;
+}
+
 interface DataState {
   estudiantes: Estudiante[];
   usuarios: Usuario[];
@@ -188,10 +199,15 @@ export async function cargarEstudiantesDesdeBackend() {
     const response = await fetch(`${API_BASE_URL}/estudiantes?limit=200`);
     if (!response.ok) return;
     const data = await response.json();
-    if (!Array.isArray(data) || data.length === 0) return;
+    const items = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.items)
+        ? data.items
+        : [];
+    if (items.length === 0) return;
 
-    const estudiantesReales = data.map((row, index) =>
-      mapearEstudianteBackend(row as Record<string, unknown>, index),
+    const estudiantesReales = items.map((row: Record<string, unknown>, index: number) =>
+      mapearEstudianteBackend(row, index),
     );
     state = { ...state, estudiantes: estudiantesReales };
     emitChange();
@@ -214,6 +230,34 @@ function updateEstudiante(idMatricula: string, updater: (estudiante: Estudiante)
 
   if (!encontrado) throw new Error(`No existe un estudiante con matrícula ${idMatricula}.`);
   state = { ...state, estudiantes };
+  emitChange();
+}
+
+/**
+ * Aplica el riesgo real devuelto por el backend al estudiante correspondiente.
+ * También registra el recálculo en el historial.
+ */
+function aplicarRiesgoBackend(idMatricula: string, riesgo: RiesgoBackend, fecha: string) {
+  const nivel = normalizarNivelRiesgo(riesgo.nivel, riesgo.probabilidad);
+  updateEstudiante(idMatricula, (estudiante) => ({
+    ...estudiante,
+    riesgo: {
+      probabilidad: riesgo.probabilidad,
+      nivel,
+      factores: riesgo.factores || estudiante.riesgo.factores,
+    },
+  }));
+  // Añadir al historial de recálculos
+  state = {
+    ...state,
+    recalculosRiesgo: {
+      ...state.recalculosRiesgo,
+      [idMatricula]: [
+        ...(state.recalculosRiesgo[idMatricula] ?? []),
+        { fecha, probabilidad: riesgo.probabilidad, nivel: normalizarNivelRiesgo(riesgo.nivel, riesgo.probabilidad) },
+      ],
+    },
+  };
   emitChange();
 }
 
@@ -271,20 +315,53 @@ export function cerrarSesion() {
   emitChange();
 }
 
-export function registrarCalificacion(idMatricula: string, calificacion: Calificacion) {
+export async function registrarCalificacion(
+  idMatricula: string,
+  calificacion: Calificacion,
+  extras?: { idCursoBackend?: number; idPeriodo?: number },
+): Promise<RiesgoBackend | null> {
   if (calificacion.nota < 0 || calificacion.nota > 20) {
     throw new RangeError("La nota debe estar entre 0 y 20.");
   }
 
+  // Actualizar estado local inmediatamente (UX optimista)
   updateEstudiante(idMatricula, (estudiante) => ({
     ...estudiante,
     calificaciones: [...(estudiante.calificaciones ?? []), clone(calificacion)],
   }));
   agregarEvidencia(idMatricula, { tipo: "calificacion", nota: calificacion.nota });
+
+  // Intentar persistir en backend y obtener riesgo real del ML
+  try {
+    const resp = await fetch(`${API_BASE_URL}/estudiantes/${idMatricula}/calificaciones`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id_curso: extras?.idCursoBackend ?? null,
+        curso: calificacion.curso,
+        id_periodo: extras?.idPeriodo ?? null,
+        tipo_evaluacion: calificacion.tipo_evaluacion,
+        fecha: calificacion.fecha,
+        nota: calificacion.nota,
+      }),
+    });
+    if (resp.ok) {
+      const data = (await resp.json()) as { riesgo: RiesgoBackend };
+      aplicarRiesgoBackend(idMatricula, data.riesgo, calificacion.fecha);
+      return data.riesgo;
+    }
+  } catch {
+    // Backend no disponible → recálculo local
+  }
+
   agregarRecalculo(idMatricula, calificacion.fecha);
+  return null;
 }
 
-export function registrarAsistencia(idMatricula: string, asistencia: RegistroAsistencia) {
+export async function registrarAsistencia(
+  idMatricula: string,
+  asistencia: RegistroAsistencia,
+): Promise<RiesgoBackend | null> {
   const estudiante = state.estudiantes.find(
     (item) => item.alumno.id_matricula === idMatricula,
   );
@@ -292,18 +369,19 @@ export function registrarAsistencia(idMatricula: string, asistencia: RegistroAsi
     throw new Error("Ya existe una asistencia para este estudiante en la fecha seleccionada.");
   }
 
-  updateEstudiante(idMatricula, (estudiante) => ({
-    ...estudiante,
+  // Actualizar estado local inmediatamente
+  updateEstudiante(idMatricula, (est) => ({
+    ...est,
     alumno: {
-      ...estudiante.alumno,
+      ...est.alumno,
       inasistencias:
-        estudiante.alumno.inasistencias +
+        est.alumno.inasistencias +
         (asistencia.estado === "Falta justificada" ||
         asistencia.estado === "Falta injustificada"
           ? 1
           : 0),
     },
-    asistencia_reciente: [...estudiante.asistencia_reciente, clone(asistencia)].sort((a, b) =>
+    asistencia_reciente: [...est.asistencia_reciente, clone(asistencia)].sort((a, b) =>
       b.fecha.localeCompare(a.fecha),
     ),
   }));
@@ -311,19 +389,88 @@ export function registrarAsistencia(idMatricula: string, asistencia: RegistroAsi
   const clave = `asistencia:${asistencia.fecha}`;
   const existentes = evidenciasSesion.get(idMatricula) ?? [];
   evidenciasSesion.set(idMatricula, [
-    ...existentes.filter((evidencia) => evidencia.tipo !== "asistencia" || evidencia.clave !== clave),
+    ...existentes.filter((ev) => ev.tipo !== "asistencia" || ev.clave !== clave),
     { tipo: "asistencia", estado: asistencia.estado, clave },
   ]);
+
+  // Intentar persistir en backend y obtener riesgo real del ML
+  try {
+    const resp = await fetch(`${API_BASE_URL}/estudiantes/${idMatricula}/asistencias`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fecha: asistencia.fecha,
+        estado: asistencia.estado,
+        hora_ingreso: asistencia.hora_ingreso,
+        medio: asistencia.medio,
+      }),
+    });
+    if (resp.ok) {
+      const data = (await resp.json()) as { riesgo: RiesgoBackend };
+      aplicarRiesgoBackend(idMatricula, data.riesgo, asistencia.fecha);
+      return data.riesgo;
+    }
+    if (resp.status === 409) {
+      // La BD ya tiene ese registro; solo recalcular
+      const r2 = await fetch(`${API_BASE_URL}/estudiantes/${idMatricula}/recalcular-riesgo`, { method: "POST" });
+      if (r2.ok) {
+        const riesgoData = (await r2.json()) as Record<string, unknown>;
+        const riesgoFallback: RiesgoBackend = {
+          id_matricula: Number(idMatricula),
+          probabilidad: Number(riesgoData.probabilidad ?? 0),
+          nivel: String(riesgoData.nivel ?? "Bajo"),
+          nivel_anterior: null,
+          nivel_cambio: false,
+          factores: String(riesgoData.factores ?? ""),
+          fecha_prediccion: String(riesgoData.fecha_prediccion ?? ""),
+        };
+        aplicarRiesgoBackend(idMatricula, riesgoFallback, asistencia.fecha);
+        return riesgoFallback;
+      }
+    }
+  } catch {
+    // Backend no disponible → recálculo local
+  }
+
   agregarRecalculo(idMatricula, asistencia.fecha);
+  return null;
 }
 
-export function registrarObservacion(idMatricula: string, observacion: ObservacionConducta) {
+export async function registrarObservacion(
+  idMatricula: string,
+  observacion: ObservacionConducta,
+  idDocente?: number,
+): Promise<RiesgoBackend | null> {
+  // Actualizar estado local inmediatamente
   updateEstudiante(idMatricula, (estudiante) => ({
     ...estudiante,
     observaciones_conducta: [...estudiante.observaciones_conducta, clone(observacion)],
   }));
   agregarEvidencia(idMatricula, { tipo: "observacion", observacion: observacion.tipo });
+
+  // Intentar persistir en backend y obtener riesgo real del ML
+  try {
+    const resp = await fetch(`${API_BASE_URL}/estudiantes/${idMatricula}/evidencias`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: observacion.tipo,
+        fecha: observacion.fecha,
+        deriva_a_tutor: observacion.deriva_a_tutor,
+        id_docente: idDocente ?? null,
+      }),
+    });
+    if (resp.ok) {
+      const data = (await resp.json()) as { riesgo: RiesgoBackend };
+      aplicarRiesgoBackend(idMatricula, data.riesgo, observacion.fecha);
+      return data.riesgo;
+    }
+  } catch {
+    // Backend no disponible → recálculo local
+  }
+
   agregarRecalculo(idMatricula, observacion.fecha);
+  return null;
 }
 
 export function crearDerivacion(idMatricula: string, derivacion: Omit<Derivacion, "id">) {

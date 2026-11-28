@@ -169,17 +169,20 @@ export function Button({
   secondary = false,
   icon,
   type = "button",
+  disabled = false,
 }: {
   children: ReactNode;
   onClick?: () => void;
   secondary?: boolean;
   icon?: IconName;
   type?: "button" | "submit";
+  disabled?: boolean;
 }) {
   return (
     <button
       type={type}
       onClick={onClick}
+      disabled={disabled}
       className={secondary ? "button button-secondary" : "button button-primary"}
     >
       {icon && <Icon name={icon} size={17} />}
