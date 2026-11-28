@@ -713,3 +713,165 @@ footer { position: relative; z-index: 6; padding: 17px 36px 28px; color: #7d8498
   outline: none;
   padding-right: 2px;
 }
+
+/* AlertDetail: solución recomendada clara y de alto contraste */
+.alert-layout .suggested-actions {
+  color: #303852;
+  border-color: #dfe3ef;
+  background: #ffffff;
+}
+.alert-layout .factors-card {
+  color: #303852;
+  border-color: #dfe3ef;
+  background: #ffffff;
+}
+.alert-layout .factors-card > p,
+.alert-layout .suggested-actions > h2,
+.pattern-profile > h3,
+.patterns-explainer h3 { color: #1f2a44; }
+.factor-list { border-top-color: #edf0f5; }
+.factor-row { border-bottom-color: #edf0f5; }
+.factor-copy { align-items: flex-start; }
+.factor-copy strong { color: #303852; }
+.factor-copy > div { display: flex; flex-direction: column; gap: 4px; }
+.factor-copy > span { color: #5f6eb2; }
+.factor-main-label { width: fit-content; color: #6470a8; font-size: 8px; font-weight: 800; }
+.factor-bar { background: #e9edf7; }
+.factor-bar span { background: #5d72d9; }
+.factor-points { margin-top: 6px; display: block; color: #69718a; font-size: 9px; text-align: right; }
+.factor-support-note { margin: 12px 0 0; padding-top: 11px; border-top: 1px solid #edf0f5; color: #69718a; font-size: 9px; line-height: 1.55; }
+.alert-layout .patterns-warning,
+.alert-layout .patterns-explainer {
+  color: #69718a;
+  border-color: #edf0f5;
+  background: #f7f8fc;
+}
+.solution-tabs button { color: #596178; border-color: #dfe3ef; background: #f7f8fc; }
+.solution-tabs button.active { color: #2439a8; border-color: #6877cf; background: #edf0ff; }
+.recommended-action {
+  border: 1px solid #cbd3f4;
+  background: linear-gradient(135deg, #eef1ff, #ffffff);
+}
+.recommended-action > small,
+.recommended-action > p { color: #5d6682; }
+.recommended-action > strong { color: #1f2a44; }
+.recommended-chip { color: #ffffff; background: #5567c7; }
+.pattern-action { border-top-color: #edf0f5; }
+.pattern-action-heading strong { color: #303852; }
+.pattern-action-heading span { color: #5567c7; }
+.pattern-bar { background: #e9edf7; }
+.pattern-bar span { background: #5d72d9; }
+.pattern-metrics { color: #69718a; }
+.previous-action-success { color: #18794e; background: #eaf7f0; }
+.previous-action-error { color: #a33a33; background: #fdeceb; }
+.insufficient-patterns { color: #69718a; }
+.pattern-confirmation { color: #18794e; background: #eaf7f0; }
+.pattern-form { background: #ffffff; color: #303852; }
+.pattern-form .modal-header h2,
+.pattern-form .modal-header .section-label { color: #1f2a44; }
+.pattern-form .modal-close { color: #596178; border-color: #dfe3ef; background: #f7f8fc; }
+.pattern-form .form-field > span { color: #596178; }
+.pattern-form .form-field input,
+.pattern-form .form-field select,
+.pattern-form .form-field textarea { color: #303852; border-color: #dfe3ef; background: #ffffff; }
+.pattern-form .form-field input[readonly] { color: #596178; background: #f7f8fc; }
+
+/* Diagnóstico IA: letras grandes y legibles */
+.ia-diagnosis-card .section-label { font-size: 12px !important; }
+.ia-diagnosis-card .card-header h2 { font-size: 20px !important; }
+.ia-diagnosis-card .update-chip { font-size: 12px !important; }
+.ia-diagnosis-card .human-note strong { display: block; font-size: 16px !important; line-height: 1.4; }
+.ia-diagnosis-card .human-note li { font-size: 15px !important; line-height: 1.65; }
+.ia-diagnosis-card .evolution-summary p { font-size: 15px !important; line-height: 1.65; }
+.ia-diagnosis-card .evolution-summary .section-label { font-size: 12px !important; }
+.ia-diagnosis-card .automatic-alert p { font-size: 15px !important; line-height: 1.65; }
+.ia-diagnosis-card .automatic-alert p strong { font-size: 15px !important; }
+
+/* ── Buscador de estudiante (StudentCombobox) ──────────────────────────── */
+.student-combobox {
+  position: relative;
+}
+
+.combobox-trigger {
+  width: 100%;
+  min-height: 43px;
+  padding: 10px 12px;
+  border: 1px solid #dfe2ec;
+  border-radius: 10px;
+  background: #fff;
+  color: #303852;
+  font: inherit;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.combobox-trigger:hover {
+  border-color: var(--blue);
+}
+
+.combobox-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: #fff;
+  border: 1px solid #dfe2ec;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(24, 34, 72, 0.14);
+  padding: 8px;
+}
+
+.combobox-search {
+  width: 100%;
+  min-height: 36px !important;
+  margin-bottom: 6px;
+}
+
+.combobox-list {
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.combobox-option {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 8px 10px;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #303852;
+  font: inherit;
+  font-size: 11px;
+}
+
+.combobox-option:hover,
+.combobox-option.active {
+  background: #eef1ff;
+  color: #2439a8;
+}
+
+.combobox-option span {
+  color: #69718a;
+  font-size: 10px;
+}
+
+.combobox-empty {
+  margin: 8px;
+  color: #69718a;
+  font-size: 11px;
+  text-align: center;
+}

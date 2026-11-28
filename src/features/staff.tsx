@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { actualizarDerivacion, bimestreKey, crearDerivacion, estimarRiesgoSimulado, formatearBimestre, getEstudiantes, notificarTutor, obtenerBimestresDisponibles, registrarAsistencia, registrarCalificacion, registrarObservacion, registrarTutoria, useDataStore, type AccionTutoria, type DerivacionTutoria, type EstadoAsistencia, type TipoEvaluacion, type TipoObservacion, type Usuario } from "../data";
 import { Button, HelpHint, Icon, PageHeading, RiskBadge, TrendIcon, type IconName, type View } from "../components/common";
 import { getTopRecommendation } from "./recommendations";
@@ -258,6 +258,100 @@ export function TeacherSection({ activeUser }: { activeUser: Usuario }) {
 
 type EvidenceTab = "nota" | "asistencia" | "observacion";
 
+function StudentCombobox({
+  estudiantes,
+  value,
+  onChange,
+}: {
+  estudiantes: ReturnType<typeof useDataStore>["estudiantes"];
+  value: string;
+  onChange: (idMatricula: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
+  const selected = estudiantes.find((s) => s.alumno.id_matricula === value);
+
+  const normalize = (text: string) =>
+    text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  const filtered = estudiantes.filter((s) => {
+    const target = normalize(`${s.alumno.nombre} ${s.alumno.codigo}`);
+    return target.includes(normalize(query));
+  });
+
+  return (
+    <div className="form-field student-combobox" ref={containerRef}>
+      <span>Alumno</span>
+      <button
+        type="button"
+        className="combobox-trigger"
+        aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <span>
+          {selected
+            ? `${selected.alumno.nombre} · ${selected.alumno.codigo}`
+            : "Seleccionar estudiante"}
+        </span>
+        <Icon name="chevron" size={16} />
+      </button>
+      {open && (
+        <div className="combobox-popover">
+          <input
+            type="text"
+            className="combobox-search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar por nombre o código..."
+            autoFocus
+          />
+          <div className="combobox-list" role="listbox">
+            {filtered.length > 0 ? (
+              filtered.map((student) => {
+                const isSelected = student.alumno.id_matricula === value;
+                return (
+                  <button
+                    key={student.alumno.id_matricula}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    className={`combobox-option${isSelected ? " active" : ""}`}
+                    onClick={() => {
+                      onChange(student.alumno.id_matricula);
+                      setOpen(false);
+                      setQuery("");
+                    }}
+                  >
+                    <strong>{student.alumno.nombre}</strong>
+                    <span>
+                      {student.alumno.codigo}
+                      {student.alumno.letra ? ` · 3.º ${student.alumno.letra}` : ""}
+                    </span>
+                  </button>
+                );
+              })
+            ) : (
+              <p className="combobox-empty">No se encontraron estudiantes.</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
   const { cursos, estudiantes, bimestreActual, totalBimestres } = useDataStore();
   const teacherCourse =
@@ -458,16 +552,11 @@ export function RegisterEvidence({ activeUser }: { activeUser: Usuario }) {
           ))}
         </div>
         <div className="evidence-form-wrap">
-          <label className="form-field">
-            <span>Alumno</span>
-            <select value={studentId} onChange={(event) => setStudentId(event.target.value)}>
-              {estudiantes.map((student) => (
-                <option value={student.alumno.id_matricula} key={student.alumno.id_matricula}>
-                  {student.alumno.nombre} · {student.alumno.codigo}
-                </option>
-              ))}
-            </select>
-          </label>
+          <StudentCombobox
+            estudiantes={estudiantes}
+            value={studentId}
+            onChange={(idMatricula) => setStudentId(idMatricula)}
+          />
 
           {tab === "nota" && (
             <form className="evidence-form" onSubmit={submitGrade}>

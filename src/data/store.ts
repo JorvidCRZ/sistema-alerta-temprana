@@ -157,6 +157,42 @@ function mapearEstudianteBackend(row: Record<string, unknown>, index: number): E
     },
   ];
 
+  const derivaciones: Derivacion[] = [];
+  if (nivel === "Alto" || nivel === "Medio") {
+    const motivo = inasistencias >= 4
+      ? "Inasistencias"
+      : b2 < 12
+        ? "Bajo rendimiento"
+        : obsGraves > 0
+          ? "Conducta"
+          : "Situación socioemocional";
+    const curso = motivo === "Bajo rendimiento"
+      ? "Matemática"
+      : motivo === "Inasistencias"
+        ? "Tutoría"
+        : motivo === "Conducta"
+          ? "Formación Ciudadana"
+          : "Orientación";
+
+    derivaciones.push({
+      id: `DER-BACKEND-${String(idNum).padStart(4, "0")}`,
+      fecha: nivel === "Alto" ? "2026-11-24" : "2026-11-20",
+      curso,
+      motivo,
+      estado: nivel === "Alto" ? "Pendiente" : "Revisada",
+      fecha_revision: nivel === "Alto" ? null : "2026-11-21",
+      accion_tutor: nivel === "Alto" ? "" : "Seguimiento iniciado",
+      docente: inasistencias >= 4 ? "Claudia Rojas" : "Luis Mendoza",
+      comentario: motivo === "Inasistencias"
+        ? `El estudiante registra ${inasistencias} inasistencias y requiere confirmar la asistencia y el apoyo familiar.`
+        : motivo === "Bajo rendimiento"
+          ? `El promedio reciente es ${b2} y presenta dificultades que ameritan acompañamiento académico.`
+          : motivo === "Conducta"
+            ? "Se registraron observaciones relevantes que requieren seguimiento del tutor."
+            : "La situación del estudiante requiere revisar su bienestar y comunicación con la familia.",
+    });
+  }
+
   return {
     alumno: {
       id_matricula: idMatricula,
@@ -183,7 +219,7 @@ function mapearEstudianteBackend(row: Record<string, unknown>, index: number): E
     },
     observaciones_conducta: observacionesConducta,
     tutorias: [],
-    derivaciones: [],
+    derivaciones,
     asistencia_reciente: asistenciaReciente,
     notas_por_curso: notasPorCurso,
     calificaciones: [],

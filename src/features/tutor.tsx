@@ -444,6 +444,73 @@ function StudentBanner({ student }: { student: Estudiante }) {
   );
 }
 
+function formatearPuntos(valor: number): string {
+  if (Math.abs(valor) < 0.05) return "sin cambio";
+  return `${valor > 0 ? "+" : "−"}${Math.abs(valor).toFixed(1)} puntos`;
+}
+
+// Texto simple para el tutor: por qué el estudiante tiene este nivel de riesgo.
+function explicarRiesgo(student: Estudiante): string {
+  const factores = [...parsearFactoresRiesgo(student.riesgo.factores)].sort(
+    (a, b) => Math.abs(b.valor) - Math.abs(a.valor),
+  );
+  const b1 = Math.round(student.alumno.promedios_bimestre.B1);
+  const b2 = Math.round(student.alumno.promedios_bimestre.B2);
+  const faltas = student.alumno.inasistencias;
+
+  const señales: string[] = [];
+  if (b2 < b1) señales.push(`su promedio bajó de ${b1} a ${b2} entre el Bimestre 1 y el 2`);
+  else if (b2 < 11) señales.push(`su promedio del Bimestre 2 es ${b2} (menos de 11 es desaprobado)`);
+  if (faltas > 0) {
+    señales.push(`acumula ${faltas} ${faltas === 1 ? "inasistencia" : "inasistencias"}`);
+  }
+
+  const motivos = factores
+    .slice(0, 2)
+    .map((factor) => displayFactorFamily(factor.familia).toLowerCase());
+
+  return [
+    `${student.alumno.nombre} tiene riesgo ${student.riesgo.nivel.toLowerCase()}${
+      señales.length ? `: ${señales.join(" y ")}.` : "."
+    }`,
+    motivos.length ? `Lo que más pesa es ${motivos.join(", seguido de ")}.` : "",
+    "Es una señal para acompañarlo a tiempo, no una sanción ni una etiqueta.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+// Explica el porcentaje de cada acción: "Mejoró en 2 de 10 casos parecidos".
+function EvidenciaAccion({
+  pct,
+  nCasos,
+  nMejoraron,
+  variacion,
+  alcanceTexto,
+}: {
+  pct: number;
+  nCasos: number;
+  nMejoraron?: number;
+  variacion: number;
+  alcanceTexto: string;
+}) {
+  // Si el backend manda el conteo exacto se usa; si no, se estima desde el porcentaje.
+  const mejoraron = nMejoraron ?? Math.round((pct * nCasos) / 100);
+  return (
+    <>
+      <div className="pattern-metrics">
+        <span>
+          Mejoró en {mejoraron} de {nCasos} casos parecidos{alcanceTexto}
+        </span>
+        <span>Cambio medio del promedio: {formatearPuntos(variacion)}</span>
+      </div>
+      {nCasos < 15 && (
+        <p className="patterns-warning">Pocos casos: tómalo solo como referencia.</p>
+      )}
+    </>
+  );
+}
+
 function SuggestedActions({
   student,
   readOnly,
@@ -461,22 +528,102 @@ function SuggestedActions({
   const [destination, setDestination] = useState<DerivacionTutoria>("Ninguna");
   const [note, setNote] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const visibleProfiles = getStudentReasons(student);
-  const [activeProfile, setActiveProfile] = useState(visibleProfiles[0]);
+  const [apiData, setApiData] = useState<RiesgoSolucionAPI | null>(null);
+  const fallbackProfiles = getStudentReasons(student);
+  const [activeProfile, setActiveProfile] = useState<Motivo | null>(fallbackProfiles[0] ?? null);
 
-  const saveSuggestedAction = (event: FormEvent) => {
+  useEffect(() => {
+    let activo = true;
+    const idNum = Number(String(student.alumno.id_matricula).replace(/\D/g, "")) || 1;
+
+    setApiData(null);
+    fetch(`http://127.0.0.1:8000/estudiantes/${idNum}/riesgo-solucion`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: RiesgoSolucionAPI | null) => {
+        if (!activo) return;
+        if (data) {
+          setApiData(data);
+          const factorProfiles = data.factores
+            .map((factor) => factor.motivo)
+            .filter((motivo, index, motivos) => motivo && motivos.indexOf(motivo) === index);
+          const profiles = data.motivo_principal
+            ? [data.motivo_principal, ...factorProfiles.filter((motivo) => motivo !== data.motivo_principal), ...fallbackProfiles.filter((motivo) => motivo !== data.motivo_principal && !factorProfiles.includes(motivo))]
+            : [...factorProfiles, ...fallbackProfiles.filter((motivo) => !factorProfiles.includes(motivo))];
+          setActiveProfile(profiles[0] ?? null);
+        } else {
+          setActiveProfile(fallbackProfiles[0] ?? null);
+        }
+      })
+      .catch(() => {
+        if (activo) {
+          setApiData(null);
+          setActiveProfile(fallbackProfiles[0] ?? null);
+        }
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, [student.alumno.id_matricula]);
+
+  const factorProfiles = apiData?.factores
+    .map((factor) => factor.motivo)
+    .filter((motivo, index, motivos) => motivo && motivos.indexOf(motivo) === index) ?? [];
+  const visibleProfiles = apiData
+    ? apiData.motivo_principal
+      ? [apiData.motivo_principal, ...factorProfiles.filter((motivo) => motivo !== apiData.motivo_principal), ...fallbackProfiles.filter((motivo) => motivo !== apiData.motivo_principal && !factorProfiles.includes(motivo))]
+      : [...factorProfiles, ...fallbackProfiles.filter((motivo) => !factorProfiles.includes(motivo))]
+    : fallbackProfiles;
+
+  const saveSuggestedAction = async (event: FormEvent) => {
     event.preventDefault();
     if (!selectedPattern) return;
-    registrarTutoria(student.alumno.id_matricula, {
-      fecha: date,
-      motivo: selectedPattern.reason,
-      accion: selectedPattern.action,
-      derivacion: destination,
-      mejoro_sim: false,
-      nota: note.trim() || undefined,
-      tutor: tutorName,
-    });
-    setConfirmation("El seguimiento fue registrado y ya aparece en el historial del estudiante.");
+    const idNum = Number(String(student.alumno.id_matricula).replace(/\D/g, "")) || 1;
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/estudiantes/${idNum}/tutorias`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fecha: date,
+          motivo: selectedPattern.reason,
+          accion: selectedPattern.action,
+          derivacion: destination,
+          nota: note.trim() || undefined,
+          tutor: tutorName,
+        }),
+      });
+
+      if (!response.ok) throw new Error("Backend no disponible");
+      const data = await response.json() as TutoriaBackendPostResponse;
+
+      setApiData((current) => current ? { ...current, ya_aplicadas: data.ya_aplicadas } : current);
+
+      if (!data.duplicado_hoy) {
+        registrarTutoria(student.alumno.id_matricula, {
+          fecha: date,
+          motivo: selectedPattern.reason,
+          accion: selectedPattern.action,
+          derivacion: destination,
+          mejoro_sim: false,
+          nota: note.trim() || undefined,
+          tutor: tutorName,
+        });
+      }
+      setConfirmation(data.mensaje);
+    } catch {
+      registrarTutoria(student.alumno.id_matricula, {
+        fecha: date,
+        motivo: selectedPattern.reason,
+        accion: selectedPattern.action,
+        derivacion: destination,
+        mejoro_sim: false,
+        nota: note.trim() || undefined,
+        tutor: tutorName,
+      });
+      setConfirmation("El seguimiento fue registrado localmente y ya aparece en el historial del estudiante.");
+    }
+
     setSelectedPattern(null);
   };
 
@@ -484,7 +631,12 @@ function SuggestedActions({
     <article className="card suggested-actions solution-feature" id="solucion-recomendada">
       <p className="section-label">Solución recomendada</p>
       <h2>Para {student.alumno.nombre}, con motivo principal: {visibleProfiles[0] ?? "Por revisar"}</h2>
-      <p className="patterns-warning">Sugerencia basada en casos similares del colegio (datos de demostración). Es una guía, no una garantía; el tutor decide.</p>
+      <p className="risk-explainer">{explicarRiesgo(student)}</p>
+      <p className="patterns-warning">
+        {apiData && apiData.soluciones.length > 0
+          ? "Sugerencia calculada desde casos históricos del colegio. Es una guía, no una garantía; el tutor decide."
+          : "Sugerencia basada en casos similares del colegio (datos de demostración). Es una guía, no una garantía; el tutor decide."}
+      </p>
 
       {visibleProfiles.length > 1 && (
         <div className="solution-tabs" role="tablist">
@@ -497,6 +649,95 @@ function SuggestedActions({
       )}
 
       {activeProfile ? (() => {
+        if (apiData && activeProfile === apiData.motivo_principal) {
+          const recommended = apiData.soluciones.find((solution) => solution.recomendada) ?? apiData.soluciones[0];
+          const alternatives = apiData.soluciones.filter((solution) => solution.nombre !== recommended?.nombre);
+          if (!recommended) return <p className="insufficient-patterns">Aún no hay suficiente información para sugerir una acción en este motivo.</p>;
+
+          const today = new Date().toISOString().slice(0, 10);
+          const renderApiApplied = (accion: string) => apiData.ya_aplicadas
+            .filter((item) => item.accion === accion)
+            .map((item, index) => {
+              const enSeguimiento = item.fecha === today || item.mejoro_sim === null;
+              return (
+                <div className="previous-action" key={`${item.fecha}-${index}`}>
+                  <Icon name="check" size={14} /> Ya aplicada el {item.fecha} · Resultado: {enSeguimiento ? "Registrada hoy (en seguimiento)" : item.mejoro_sim ? "Mejoró" : "No mejoró"}
+                </div>
+              );
+            });
+
+          return (
+            <section className="pattern-profile">
+              <div className="recommended-action">
+                <span className="recommended-chip">Recomendada</span>
+                <small>Acción recomendada</small>
+                <strong>{recommended.nombre}</strong>
+                <p>
+                  Esta acción tiene el mejor resultado en casos parecidos: el promedio mejoró en{" "}
+                  <strong>
+                    {recommended.n_mejoraron ?? Math.round((recommended.pct_mejoro * recommended.n_casos) / 100)} de {recommended.n_casos} casos
+                  </strong>{" "}
+                  ({Math.round(recommended.pct_mejoro)} %
+                  {recommended.alcance === "colegio" ? " · todo el colegio" : " · 3.º Sec."}).
+                  {recommended.n_casos < 15 && " Son pocos casos: tómalo como referencia."}
+                </p>
+                {renderApiApplied(recommended.nombre)}
+                {!readOnly && (() => {
+                  const yaRegistradaHoy = registroRegistradoHoy(recommended.nombre, apiData.ya_aplicadas, student.tutorias);
+                  return (
+                    <Button
+                      onClick={() => setSelectedPattern({ reason: activeProfile, action: recommended.nombre })}
+                      disabled={yaRegistradaHoy}
+                    >
+                      {yaRegistradaHoy ? "Ya registrada hoy" : "Aplicar esta acción"}
+                    </Button>
+                  );
+                })()}
+              </div>
+              {alternatives.length > 0 && (
+                <>
+                  <h3>Otras opciones</h3>
+                  <p className="patterns-warning">
+                    Cómo leerlo: el porcentaje indica en cuántos casos parecidos mejoró el promedio del estudiante en el bimestre siguiente después de aplicar esa acción (por ejemplo, 20 % = mejoró en 2 de 10 casos). Es una referencia basada en casos pasados, no una garantía; el tutor decide.
+                  </p>
+                </>
+              )}
+              {alternatives.map((solution) => {
+                const yaRegistradaHoy = registroRegistradoHoy(solution.nombre, apiData.ya_aplicadas, student.tutorias);
+                return (
+                  <div className="pattern-action" key={solution.nombre}>
+                    <div className="pattern-action-heading">
+                      <strong>{solution.nombre}</strong>
+                      <span>{Math.round(solution.pct_mejoro)} %</span>
+                    </div>
+                    <div className="pattern-bar" aria-label={`${Math.round(solution.pct_mejoro)} % de casos con mejora`}>
+                      <span style={{ width: `${Math.round(solution.pct_mejoro)}%` }} />
+                    </div>
+                    <EvidenciaAccion
+                      pct={solution.pct_mejoro}
+                      nCasos={solution.n_casos}
+                      nMejoraron={solution.n_mejoraron}
+                      variacion={solution.variacion_media}
+                      alcanceTexto={solution.alcance === "colegio" ? " · todo el colegio" : " · 3.º Sec."}
+                    />
+                    {renderApiApplied(solution.nombre)}
+                    {!readOnly && <Button
+                      secondary
+                      disabled={yaRegistradaHoy}
+                      onClick={() => {
+                        setSelectedPattern({ reason: activeProfile, action: solution.nombre });
+                        setConfirmation("");
+                      }}
+                    >
+                      {yaRegistradaHoy ? "Ya registrada hoy" : "Elegir otra acción"}
+                    </Button>}
+                  </div>
+                );
+              })}
+            </section>
+          );
+        }
+
         const actions = getAccionesSugeridas(activeProfile, student.tutorias);
         const recommended = actions.find((action) => action.aplicaciones.length === 0) ?? actions[0];
         const alternatives = actions.filter((action) => action.nombre !== recommended?.nombre);
@@ -507,17 +748,47 @@ function SuggestedActions({
               <span className="recommended-chip">Recomendada</span>
               <small>Acción recomendada</small>
               <strong>{recommended.nombre}</strong>
-              <p>En casos similares, esta acción ayudó a mejorar el promedio en el {Math.round(recommended.pct_mejoro)} % de los casos ({recommended.n_casos} casos).</p>
-              {recommended.aplicaciones.map((tutoring, index) => (
-                <div className="previous-action" key={`${tutoring.fecha}-${index}`}>
-                  <Icon name="check" size={14} /> Ya aplicada el {tutoring.fecha} · Resultado: {tutoring.mejoro_sim ? "Mejoró" : "No mejoró"}
-                </div>
-              ))}
-              {!readOnly && <Button onClick={() => setSelectedPattern({ reason: activeProfile, action: recommended.nombre })}>Aplicar esta acción</Button>}
+              <p>
+                Esta acción tiene el mejor resultado en casos parecidos: el promedio mejoró en{" "}
+                <strong>
+                  {Math.round((recommended.pct_mejoro * recommended.n_casos) / 100)} de {recommended.n_casos} casos
+                </strong>{" "}
+                ({Math.round(recommended.pct_mejoro)} %).
+                {recommended.n_casos < 15 && " Son pocos casos: tómalo como referencia."}
+              </p>
+              {recommended.aplicaciones.map((tutoring, index) => {
+                const today = new Date().toISOString().slice(0, 10);
+                const enSeguimiento = tutoring.fecha === today || tutoring.mejoro_sim === null;
+                return (
+                  <div className="previous-action" key={`${tutoring.fecha}-${index}`}>
+                    <Icon name="check" size={14} /> Ya aplicada el {tutoring.fecha} · Resultado: {enSeguimiento ? "Registrada hoy (en seguimiento)" : tutoring.mejoro_sim ? "Mejoró" : "No mejoró"}
+                  </div>
+                );
+              })}
+              {!readOnly && (() => {
+                const yaRegistradaHoy = registroRegistradoHoy(recommended.nombre, apiData?.ya_aplicadas ?? [], student.tutorias);
+                return (
+                  <Button
+                    onClick={() => setSelectedPattern({ reason: activeProfile, action: recommended.nombre })}
+                    disabled={yaRegistradaHoy}
+                  >
+                    {yaRegistradaHoy ? "Ya registrada hoy" : "Aplicar esta acción"}
+                  </Button>
+                );
+              })()}
             </div>
-            {alternatives.length > 0 && <h3>Otras opciones</h3>}
-            {alternatives.map((action) => (
-              <div className="pattern-action" key={action.nombre}>
+            {alternatives.length > 0 && (
+              <>
+                <h3>Otras opciones</h3>
+                <p className="patterns-warning">
+                  Cómo leerlo: el porcentaje indica en cuántos casos parecidos mejoró el promedio del estudiante en el bimestre siguiente después de aplicar esa acción (por ejemplo, 20 % = mejoró en 2 de 10 casos). Es una referencia basada en casos pasados, no una garantía; el tutor decide.
+                </p>
+              </>
+            )}
+            {alternatives.map((action) => {
+              const yaRegistradaHoy = registroRegistradoHoy(action.nombre, apiData?.ya_aplicadas ?? [], student.tutorias);
+              return (
+                <div className="pattern-action" key={action.nombre}>
                   <div className="pattern-action-heading">
                     <strong>{action.nombre}</strong>
                     <span>{Math.round(action.pct_mejoro)} %</span>
@@ -525,27 +796,34 @@ function SuggestedActions({
                   <div className="pattern-bar" aria-label={`${Math.round(action.pct_mejoro)} % de casos con mejora`}>
                     <span style={{ width: `${Math.round(action.pct_mejoro)}%` }} />
                   </div>
-                  <div className="pattern-metrics">
-                    <span>{action.n_casos} casos</span>
-                    <span>{action.variacion_media > 0 ? "+" : ""}{Math.round(action.variacion_media)} puntos de promedio</span>
-                  </div>
-                  {action.aplicaciones.map((tutoring, index) => (
-                    <div className="previous-action" key={`${tutoring.fecha}-${index}`}>
-                      <Icon name="check" size={14} />
-                      Ya aplicada el {tutoring.fecha} · Resultado: {tutoring.mejoro_sim ? "Mejoró" : "No mejoró"}
-                    </div>
-                  ))}
+                  <EvidenciaAccion
+                    pct={action.pct_mejoro}
+                    nCasos={action.n_casos}
+                    variacion={action.variacion_media}
+                    alcanceTexto=""
+                  />
+                  {action.aplicaciones.map((tutoring, index) => {
+                    const today = new Date().toISOString().slice(0, 10);
+                    const enSeguimiento = tutoring.fecha === today || tutoring.mejoro_sim === null;
+                    return (
+                      <div className="previous-action" key={`${tutoring.fecha}-${index}`}>
+                        <Icon name="check" size={14} /> Ya aplicada el {tutoring.fecha} · Resultado: {enSeguimiento ? "Registrada hoy (en seguimiento)" : tutoring.mejoro_sim ? "Mejoró" : "No mejoró"}
+                      </div>
+                    );
+                  })}
                   {!readOnly && <Button
                     secondary
+                    disabled={yaRegistradaHoy}
                     onClick={() => {
                       setSelectedPattern({ reason: activeProfile, action: action.nombre });
                       setConfirmation("");
                     }}
                   >
-                    Elegir otra acción
+                    {yaRegistradaHoy ? "Ya registrada hoy" : "Elegir otra acción"}
                   </Button>}
                 </div>
-            ))}
+              );
+            })}
           </section>
         );
       })() : <p className="insufficient-patterns">Aún no hay suficiente información para sugerir una acción en este motivo.</p>}
@@ -710,18 +988,36 @@ export function AlertDetail({
             <h2>¿Por qué se generó esta alerta?</h2>
             <p>Información que tuvo mayor influencia en el semáforo.</p>
             <div className="factor-list">
-              {factors.map((factor) => (
-                <div className="factor-row" key={factor.familia}>
-                  <div className="factor-copy">
-                    <strong>{displayFactorFamily(factor.familia)}</strong>
-                    <span>Peso en la alerta: {Math.abs(factor.valor) / maxFactorValue >= 0.67 ? "Alto" : Math.abs(factor.valor) / maxFactorValue >= 0.34 ? "Medio" : "Bajo"}</span>
-                  </div>
-                  <div className="factor-bar" aria-hidden="true">
-                    <span style={{ width: `${(Math.abs(factor.valor) / maxFactorValue) * 100}%` }} />
-                  </div>
-                </div>
-              ))}
+              {[...factors]
+                .sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor))
+                .map((factor, index) => {
+                  const weightRatio = Math.min(1, Math.abs(factor.valor) / maxFactorValue);
+                  const weightLabel = weightRatio >= 0.67 ? "Alto" : weightRatio >= 0.34 ? "Medio" : "Bajo";
+                  return (
+                    <div className="factor-row" key={factor.familia}>
+                      <div className="factor-copy">
+                        <div>
+                          {index === 0 && <span className="factor-main-label">Factor principal</span>}
+                          <strong>{displayFactorFamily(factor.familia)}</strong>
+                        </div>
+                        <span>Peso: {weightLabel}</span>
+                      </div>
+                      <div
+                        className="factor-bar"
+                        role="progressbar"
+                        aria-label={`Peso de ${displayFactorFamily(factor.familia)}`}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(weightRatio * 100)}
+                      >
+                        <span style={{ width: `${weightRatio * 100}%` }} />
+                      </div>
+                      <small className="factor-points">{factor.valor >= 0 ? "+" : ""}{factor.valor.toFixed(1)} pts</small>
+                    </div>
+                  );
+                })}
             </div>
+            <p className="factor-support-note">Señales compatibles con riesgo académico. Es un apoyo para el tutor, no determina una causa ni una consecuencia por sí sola.</p>
           </article>
           <SuggestedActions student={student} readOnly={!canApply} tutorName={tutorName} />
         </aside>
@@ -942,7 +1238,7 @@ function DiagnosticoIA({ idMatricula }: { idMatricula: string }) {
 
   if (cargando) {
     return (
-      <article className="card wide" style={{ gridColumn: "1 / -1" }}>
+      <article className="card wide ia-diagnosis-card" style={{ gridColumn: "1 / -1" }}>
         <p className="section-label">Diagnóstico IA · Gemini + Random Forest</p>
         <p>Analizando notas, asistencia y factores sociofamiliares en SQLite...</p>
       </article>
@@ -952,7 +1248,7 @@ function DiagnosticoIA({ idMatricula }: { idMatricula: string }) {
   if (!iaData) return null;
 
   return (
-    <article className="card wide" style={{ gridColumn: "1 / -1" }}>
+    <article className="card wide ia-diagnosis-card" style={{ gridColumn: "1 / -1" }}>
       <div className="card-header">
         <div>
           <p className="section-label">Diagnóstico explicativo IA</p>
@@ -990,7 +1286,7 @@ function DiagnosticoIA({ idMatricula }: { idMatricula: string }) {
       <div className="evolution-summary" style={{ marginBottom: "1rem" }}>
         <div className="summary-mark"><Icon name="model" /></div>
         <div>
-          <p className="section-label">Factores ocultos (distancia, familia, entorno)</p>
+          <p className="section-label">Contexto familiar y entorno del estudiante</p>
           <p>{iaData.analisis_factores_ocultos}</p>
         </div>
       </div>
@@ -1026,11 +1322,40 @@ export function History({
     "Todos" | "Presente" | "Tardanza" | "Faltas" | "Falta justificada" | "Falta injustificada"
   >("Todos");
   const [attendancePage, setAttendancePage] = useState(1);
+  const [apiTutorias, setApiTutorias] = useState<TutoriaBackend[]>([]);
   const calificaciones = student.calificaciones ?? [];
 
   useEffect(() => {
     setAttendancePage(1);
   }, [student.alumno.id_matricula, attendanceFilter]);
+
+  useEffect(() => {
+    let activo = true;
+    setCursoDrilldown(null);
+    setApiTutorias([]);
+    const idNum = Number(String(student.alumno.id_matricula).replace(/\D/g, "")) || 1;
+
+    fetch(`http://127.0.0.1:8000/estudiantes/${idNum}/tutorias`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: unknown) => {
+        if (!activo) return;
+        let tutorias: TutoriaBackend[] = [];
+        if (Array.isArray(data)) {
+          tutorias = data as TutoriaBackend[];
+        } else if (data && typeof data === "object" && "tutorias" in data) {
+          const posibleLista = (data as { tutorias?: unknown }).tutorias;
+          if (Array.isArray(posibleLista)) tutorias = posibleLista as TutoriaBackend[];
+        }
+        setApiTutorias(tutorias);
+      })
+      .catch(() => {
+        if (activo) setApiTutorias([]);
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, [student.alumno.id_matricula]);
 
   const totalPresentes = student.asistencia_reciente.filter((a) => a.estado === "Presente").length;
   const totalTardanzas = student.asistencia_reciente.filter((a) => a.estado === "Tardanza").length;
@@ -1078,13 +1403,30 @@ export function History({
       : "No se registran observaciones socioemocionales.",
     "Estos indicadores no determinan una causa; sirven como apoyo para la revisión del tutor.",
   ].join(" ");
+  const tutoriasLocalesNormalizadas: TutoriaBackend[] = student.tutorias.map((tutoria) => ({
+    fecha: tutoria.fecha,
+    motivo: tutoria.motivo,
+    accion: tutoria.accion,
+    derivacion: tutoria.derivacion,
+    mejoro_sim: tutoria.mejoro_sim,
+    nota: tutoria.nota,
+    tutor: tutoria.tutor,
+  }));
+  const tutoriasCombinadas = [...tutoriasLocalesNormalizadas, ...apiTutorias].filter(
+    (tutoria, index, lista) =>
+      lista.findIndex((item) => item.fecha === tutoria.fecha && item.accion === tutoria.accion) === index,
+  );
   const supportEvents: { date: string; type: string; title: string; details: string }[] = [
-    ...student.tutorias.map((tutoria) => ({
-      date: tutoria.fecha,
-      type: "Tutoría",
-      title: tutoria.motivo,
-      details: `${tutoria.accion} · Derivación: ${tutoria.derivacion} · ${tutoria.mejoro_sim ? "Mejoró" : "No mejoró"}${tutoria.tutor ? ` · Tutor: ${tutoria.tutor}` : ""}${tutoria.nota ? ` · ${tutoria.nota}` : ""}`,
-    })),
+    ...tutoriasCombinadas.map((tutoria) => {
+      const today = new Date().toISOString().slice(0, 10);
+      const enSeguimiento = tutoria.fecha === today || tutoria.mejoro_sim === null;
+      return {
+        date: tutoria.fecha,
+        type: "Tutoría",
+        title: tutoria.motivo,
+        details: `${tutoria.accion} · Derivación: ${tutoria.derivacion} · ${enSeguimiento ? "En seguimiento" : tutoria.mejoro_sim ? "Mejoró" : "No mejoró"}${tutoria.tutor ? ` · Tutor: ${tutoria.tutor}` : ""}${tutoria.nota ? ` · ${tutoria.nota}` : ""}`,
+      };
+    }),
     ...student.observaciones_conducta.map((observation) => ({
       date: observation.fecha,
       type: "Observación de conducta",
@@ -1425,13 +1767,15 @@ export function History({
         <article className="card action-results-card">
           <div className="card-header"><div><p className="section-label">Resultados</p><h2>¿Funcionó la acción?</h2><span>Comparación del promedio antes y después de cada tutoría.</span></div></div>
           <div className="action-results-list">
-            {student.tutorias.length > 0 ? student.tutorias.map((tutoria, index) => {
-              const improved = b2 > b1;
+            {tutoriasCombinadas.length > 0 ? tutoriasCombinadas.map((tutoria, index) => {
+              const today = new Date().toISOString().slice(0, 10);
+              const enSeguimiento = tutoria.fecha === today || tutoria.mejoro_sim === null;
+              const improved = tutoria.mejoro_sim === null ? false : tutoria.mejoro_sim;
               return (
                 <div key={`${tutoria.fecha}-${tutoria.accion}-${index}`}>
                   <div><strong>{tutoria.accion}</strong><span>{tutoria.fecha} · {tutoria.motivo}</span></div>
                   <span>{b1} → {b2}</span>
-                  <span className={improved ? "result-improved" : "result-not-improved"}>{improved ? "Mejoró" : "No mejoró"}</span>
+                  <span className={enSeguimiento ? "result-not-improved" : improved ? "result-improved" : "result-not-improved"}>{enSeguimiento ? "En seguimiento" : improved ? "Mejoró" : "No mejoró"}</span>
                 </div>
               );
             }) : <p className="empty-history">Aún no hay acciones aplicadas.</p>}
@@ -1452,5 +1796,59 @@ export function History({
         </div>
       </div>
     </>
+  );
+}
+
+
+interface SolucionRiesgoAPI {
+  nombre: AccionTutoria;
+  n_casos: number;
+  n_mejoraron?: number;
+  pct_mejoro: number;
+  variacion_media: number;
+  alcance: string;
+  recomendada: boolean;
+}
+
+interface TutoriaAplicadaAPI {
+  accion: string;
+  fecha: string;
+  mejoro_sim: boolean | null;
+}
+
+interface RiesgoSolucionAPI {
+  id_matricula: number;
+  motivo_principal: Motivo | null;
+  factores: { factor: string; motivo: Motivo; peso: number }[];
+  soluciones: SolucionRiesgoAPI[];
+  ya_aplicadas: TutoriaAplicadaAPI[];
+}
+
+interface TutoriaBackendPostResponse {
+  ok: boolean;
+  duplicado_hoy: boolean;
+  mensaje: string;
+  ya_aplicadas: TutoriaAplicadaAPI[];
+}
+
+interface TutoriaBackend {
+  fecha: string;
+  motivo: Motivo;
+  accion: AccionTutoria;
+  derivacion: DerivacionTutoria;
+  mejoro_sim: boolean | null;
+  nota?: string;
+  tutor?: string;
+}
+
+function registroRegistradoHoy(
+  accion: string,
+  apiAplicadas: TutoriaAplicadaAPI[],
+  tutoriasLocales: Estudiante["tutorias"],
+): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    apiAplicadas.some((item) => item.accion === accion && item.fecha === today) ||
+    tutoriasLocales.some((item) => item.accion === accion && item.fecha === today)
   );
 }
