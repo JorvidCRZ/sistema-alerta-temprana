@@ -254,7 +254,7 @@ export function Sidebar({
       <div className="logo-wrap">
         <img src={logo} alt="Saco Oliveros" className="logo" />
       </div>
-      <div className="school-label">Portal del tutor</div>
+      <div className="school-label"></div>
       <nav aria-label="Navegación principal" className="nav-list">
         {navItems.map((item) => {
           const active = item.view === view;
@@ -310,7 +310,7 @@ export function Header({
         <p className="system-kicker">Riesgo académico</p>
       </div>
       <div className="header-actions">
-        <div className="class-chip">3.º Secundaria · A</div>
+        <div className="class-chip">3.º Secundaria</div>
         <button
           type="button"
           className="icon-button"

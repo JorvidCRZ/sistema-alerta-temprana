@@ -33,10 +33,13 @@ export type TipoContacto = (typeof TIPOS_CONTACTO)[number];
 export type NivelRiesgo = "Bajo" | "Medio" | "Alto";
 export type RolUsuario = "Tutor" | "Docente" | "Coordinacion";
 
+export type BimestreCodigo = "B1" | "B2" | "B3" | "B4";
+export type BimestreNumero = 1 | 2 | 3 | 4;
+
 export interface Calificacion {
   fecha: string;
   curso: string;
-  bimestre: "B1" | "B2";
+  bimestre: BimestreCodigo;
   tipo_evaluacion: TipoEvaluacion;
   nota: number;
 }
@@ -92,8 +95,14 @@ export interface Contacto {
 
 export interface NotaPorCurso {
   curso: string;
-  B1: number;
-  B2: number;
+  B1: number | null;
+  B2: number | null;
+  B3?: number | null;
+  B4?: number | null;
+  esParcialB1?: boolean;
+  esParcialB2?: boolean;
+  esParcialB3?: boolean;
+  esParcialB4?: boolean;
 }
 
 export interface Estudiante {

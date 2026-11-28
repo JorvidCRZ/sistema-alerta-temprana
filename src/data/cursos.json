@@ -1,5 +1,11 @@
 [
-  { "id": "CUR-001", "nombre": "Matemática" },
+  { "id": "CUR-007", "nombre": "Arte y Cultura" },
+  { "id": "CUR-004", "nombre": "Ciencia y Tecnología" },
+  { "id": "CUR-005", "nombre": "Ciencias Sociales" },
   { "id": "CUR-002", "nombre": "Comunicación" },
-  { "id": "CUR-003", "nombre": "Ciencia y Tecnología" }
+  { "id": "CUR-006", "nombre": "Desarrollo Personal" },
+  { "id": "CUR-008", "nombre": "Educación Física" },
+  { "id": "CUR-009", "nombre": "Educación para el Trabajo" },
+  { "id": "CUR-003", "nombre": "Inglés" },
+  { "id": "CUR-001", "nombre": "Matemática" }
 ]

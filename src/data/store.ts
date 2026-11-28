@@ -1,4 +1,9 @@
 import { useSyncExternalStore } from "react";
+import {
+  bimestreACodigo,
+  calcularPromedioCursoPonderado,
+  codigoABimestre,
+} from "./academics";
 import cursosIniciales from "./cursos.json";
 import estudiantesIniciales from "./datos_prototipo.json";
 import docentesIniciales from "./docentes.json";
@@ -50,6 +55,8 @@ interface DataState {
   recalculosRiesgo: Record<string, RecalculoRiesgo[]>;
   notificacionesTutor: number;
   modelo: ModeloInfo;
+  bimestreActual: number;
+  totalBimestres: number;
 }
 
 type EvidenciaSesion =
@@ -184,6 +191,8 @@ const createInitialState = (): DataState => ({
   recalculosRiesgo: {},
   notificacionesTutor: 0,
   modelo: clone(modeloInicial as ModeloInfo),
+  bimestreActual: 3,
+  totalBimestres: 4,
 });
 
 let state = createInitialState();
@@ -196,23 +205,175 @@ function emitChange() {
 
 export async function cargarEstudiantesDesdeBackend() {
   try {
-    const response = await fetch(`${API_BASE_URL}/estudiantes?limit=200`);
-    if (!response.ok) return;
-    const data = await response.json();
-    const items = Array.isArray(data)
-      ? data
-      : Array.isArray(data?.items)
-        ? data.items
-        : [];
+    const [resp2026, healthResp, cursosResp] = await Promise.all([
+      fetch(`${API_BASE_URL}/estudiantes?anio=2026&limit=200`),
+      fetch(`${API_BASE_URL}/`).catch(() => null),
+      fetch(`${API_BASE_URL}/cursos`).catch(() => null),
+    ]);
+
+    let bimestreActual = state.bimestreActual;
+    let totalBimestres = state.totalBimestres;
+    if (healthResp && healthResp.ok) {
+      const healthData = (await healthResp.json()) as {
+        bimestre_actual?: number;
+        total_bimestres?: number;
+      };
+      if (typeof healthData.bimestre_actual === "number") bimestreActual = healthData.bimestre_actual;
+      if (typeof healthData.total_bimestres === "number") totalBimestres = healthData.total_bimestres;
+    }
+
+    let cursos = state.cursos;
+    if (cursosResp && cursosResp.ok) {
+      const cursosData = (await cursosResp.json()) as Array<{ id_curso: number; nombre: string }>;
+      if (Array.isArray(cursosData) && cursosData.length > 0) {
+        cursos = cursosData.map((c) => ({
+          id: `CUR-${String(c.id_curso).padStart(3, "0")}`,
+          nombre: c.nombre,
+        }));
+      }
+    }
+
+    const extractItems = (data: unknown): Record<string, unknown>[] => {
+      if (Array.isArray(data)) return data as Record<string, unknown>[];
+      if (data && typeof data === "object" && Array.isArray((data as { items?: unknown }).items)) {
+        return (data as { items: Record<string, unknown>[] }).items;
+      }
+      return [];
+    };
+
+    let items: Record<string, unknown>[] = [];
+    if (resp2026.ok) {
+      items = extractItems(await resp2026.json());
+    }
+    // Si aún no hay matrículas registradas en 2026, tomar el año más reciente disponible (2025)
+    if (items.length === 0) {
+      const resp2025 = await fetch(`${API_BASE_URL}/estudiantes?anio=2025&limit=200`);
+      if (resp2025.ok) {
+        items = extractItems(await resp2025.json());
+      }
+    }
     if (items.length === 0) return;
 
-    const estudiantesReales = items.map((row: Record<string, unknown>, index: number) =>
+    const estudiantesReales = items.map((row, index) =>
       mapearEstudianteBackend(row, index),
     );
-    state = { ...state, estudiantes: estudiantesReales };
+    state = { ...state, estudiantes: estudiantesReales, bimestreActual, totalBimestres, cursos };
     emitChange();
   } catch {
     // Si el backend FastAPI está apagado, mantiene los datos de demostración
+  }
+}
+
+/** Carga el historial real (notas, asistencias, observaciones, tutorías) desde el backend. */
+export async function cargarHistorialEstudianteDesdeBackend(idMatricula: string) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/estudiantes/${idMatricula}/historial`);
+    if (!response.ok) return;
+    const data = (await response.json()) as {
+      calificaciones?: Array<{
+        curso: string;
+        bimestre: number;
+        tipo_evaluacion: Calificacion["tipo_evaluacion"];
+        fecha: string;
+        nota: number;
+      }>;
+      inasistencias_tardanzas_recientes?: Array<{
+        fecha: string;
+        estado: RegistroAsistencia["estado"];
+        hora_ingreso: string | null;
+        medio: RegistroAsistencia["medio"];
+      }>;
+      asistencia_resumen?: Record<string, number>;
+      observaciones?: Array<{
+        fecha: string;
+        tipo: ObservacionConducta["tipo"];
+        deriva_a_tutor: number | boolean;
+      }>;
+      tutorias?: Array<{
+        fecha: string;
+        motivo: Tutoria["motivo"];
+        accion: Tutoria["accion"];
+        derivacion: Tutoria["derivacion"];
+        docente?: string | null;
+      }>;
+    };
+
+    const calificaciones: Calificacion[] = (data.calificaciones ?? []).map((c) => ({
+      fecha: c.fecha,
+      curso: c.curso,
+      bimestre: bimestreACodigo(Number(c.bimestre)),
+      tipo_evaluacion: c.tipo_evaluacion,
+      nota: Number(c.nota),
+    }));
+
+    const cursosUnicos = Array.from(new Set(calificaciones.map((c) => c.curso))).sort((a, b) =>
+      a.localeCompare(b, "es"),
+    );
+
+    updateEstudiante(idMatricula, (est) => {
+      const nombresCursos =
+        cursosUnicos.length > 0
+          ? cursosUnicos
+          : est.notas_por_curso.map((n) => n.curso);
+
+      const notasPorCurso = nombresCursos.map((curso) => {
+        const r1 = calcularPromedioCursoPonderado(calificaciones, curso, "B1");
+        const r2 = calcularPromedioCursoPonderado(calificaciones, curso, "B2");
+        const r3 = calcularPromedioCursoPonderado(calificaciones, curso, "B3");
+        const r4 = calcularPromedioCursoPonderado(calificaciones, curso, "B4");
+        return {
+          curso,
+          B1: r1.promedio,
+          B2: r2.promedio,
+          B3: r3.promedio,
+          B4: r4.promedio,
+          esParcialB1: r1.esParcial,
+          esParcialB2: r2.esParcial,
+          esParcialB3: r3.esParcial,
+          esParcialB4: r4.esParcial,
+        };
+      });
+
+      const faltasJust = data.asistencia_resumen?.["Falta justificada"] ?? 0;
+      const faltasInjust = data.asistencia_resumen?.["Falta injustificada"] ?? 0;
+      const totalInasistencias =
+        data.asistencia_resumen ? faltasJust + faltasInjust : est.alumno.inasistencias;
+
+      return {
+        ...est,
+        alumno: {
+          ...est.alumno,
+          inasistencias: totalInasistencias,
+        },
+        calificaciones,
+        notas_por_curso: notasPorCurso.length > 0 ? notasPorCurso : est.notas_por_curso,
+        asistencia_reciente:
+          data.inasistencias_tardanzas_recientes && data.inasistencias_tardanzas_recientes.length > 0
+            ? data.inasistencias_tardanzas_recientes
+            : est.asistencia_reciente,
+        observaciones_conducta:
+          data.observaciones
+            ? data.observaciones.map((o) => ({
+                fecha: o.fecha,
+                tipo: o.tipo,
+                deriva_a_tutor: Boolean(o.deriva_a_tutor),
+              }))
+            : est.observaciones_conducta,
+        tutorias:
+          data.tutorias
+            ? data.tutorias.map((t) => ({
+                fecha: t.fecha,
+                motivo: t.motivo,
+                accion: t.accion,
+                derivacion: t.derivacion,
+                mejoro_sim: false,
+                tutor: t.docente ?? undefined,
+              }))
+            : est.tutorias,
+      };
+    });
+  } catch {
+    // Si el backend no responde, se mantienen los datos en memoria
   }
 }
 
@@ -324,11 +485,38 @@ export async function registrarCalificacion(
     throw new RangeError("La nota debe estar entre 0 y 20.");
   }
 
-  // Actualizar estado local inmediatamente (UX optimista)
-  updateEstudiante(idMatricula, (estudiante) => ({
-    ...estudiante,
-    calificaciones: [...(estudiante.calificaciones ?? []), clone(calificacion)],
-  }));
+  // Actualizar estado local inmediatamente (UX optimista) y recalcular promedios ponderados del curso
+  updateEstudiante(idMatricula, (estudiante) => {
+    const nuevasCalificaciones = [...(estudiante.calificaciones ?? []), clone(calificacion)];
+    const cursosExistentes = new Set(estudiante.notas_por_curso.map((n) => n.curso));
+    cursosExistentes.add(calificacion.curso);
+    const notasPorCurso = Array.from(cursosExistentes)
+      .sort((a, b) => a.localeCompare(b, "es"))
+      .map((curso) => {
+        const previo = estudiante.notas_por_curso.find((n) => n.curso === curso);
+        if (curso !== calificacion.curso && previo) return previo;
+        const r1 = calcularPromedioCursoPonderado(nuevasCalificaciones, curso, "B1");
+        const r2 = calcularPromedioCursoPonderado(nuevasCalificaciones, curso, "B2");
+        const r3 = calcularPromedioCursoPonderado(nuevasCalificaciones, curso, "B3");
+        const r4 = calcularPromedioCursoPonderado(nuevasCalificaciones, curso, "B4");
+        return {
+          curso,
+          B1: r1.promedio ?? previo?.B1 ?? null,
+          B2: r2.promedio ?? previo?.B2 ?? null,
+          B3: r3.promedio ?? previo?.B3 ?? null,
+          B4: r4.promedio ?? previo?.B4 ?? null,
+          esParcialB1: r1.promedio !== null ? r1.esParcial : previo?.esParcialB1,
+          esParcialB2: r2.promedio !== null ? r2.esParcial : previo?.esParcialB2,
+          esParcialB3: r3.promedio !== null ? r3.esParcial : previo?.esParcialB3,
+          esParcialB4: r4.promedio !== null ? r4.esParcial : previo?.esParcialB4,
+        };
+      });
+    return {
+      ...estudiante,
+      calificaciones: nuevasCalificaciones,
+      notas_por_curso: notasPorCurso,
+    };
+  });
   agregarEvidencia(idMatricula, { tipo: "calificacion", nota: calificacion.nota });
 
   // Intentar persistir en backend y obtener riesgo real del ML
@@ -340,6 +528,7 @@ export async function registrarCalificacion(
         id_curso: extras?.idCursoBackend ?? null,
         curso: calificacion.curso,
         id_periodo: extras?.idPeriodo ?? null,
+        bimestre: codigoABimestre(calificacion.bimestre),
         tipo_evaluacion: calificacion.tipo_evaluacion,
         fecha: calificacion.fecha,
         nota: calificacion.nota,

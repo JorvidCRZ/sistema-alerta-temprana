@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { getAccionesSugeridas, parsearFactoresRiesgo, registrarTutoria, useDataStore, type AccionTutoria, type DerivacionTutoria, type Estudiante, type Motivo, type RecalculoRiesgo } from "../data";
+import { bimestreACodigo, calcularPromedioCursoPonderado, calcularPromedioGeneral, cargarHistorialEstudianteDesdeBackend, getAccionesSugeridas, parsearFactoresRiesgo, registrarTutoria, useDataStore, type AccionTutoria, type BimestreCodigo, type DerivacionTutoria, type Estudiante, type Motivo, type RecalculoRiesgo } from "../data";
 import { Button, HelpHint, Icon, PageHeading, RiskBadge, TrendIcon, calcularTendencia, formatearNivelPorcentaje, type IconName, type View } from "../components/common";
 import { displayFactorFamily, getStudentReasons, getTopRecommendation } from "./recommendations";
+import { etiquetaSeccion, useSecciones } from "../data/secciones";
 
 export function Dashboard({
   navigate,
@@ -17,6 +18,7 @@ export function Dashboard({
   dismissAlert: () => void;
 }) {
   const { estudiantes, modelo } = useDataStore();
+  const { seccionDe } = useSecciones();
   const [dashboardPage, setDashboardPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -129,7 +131,7 @@ export function Dashboard({
                     <td>
                       <div className="student-cell">
                         <span className="student-avatar">{student.alumno.nombre.split(" ").map((part) => part[0]).join("")}</span>
-                        <div><strong>{student.alumno.nombre}</strong><span>3.º Sec. · A</span></div>
+                        <div><strong>{student.alumno.nombre}</strong><span>{etiquetaSeccion(seccionDe(student.alumno.id_matricula))}</span></div>
                       </div>
                     </td>
                     <td><span className={performance.includes("descenso") || performance === "Descendente" ? "down-text" : "trend-neutral"}><TrendIcon trend={performance} />{performance}</span></td>
@@ -243,6 +245,8 @@ export function Students({
   openSolution: (idMatricula: string) => void;
 }) {
   const { estudiantes } = useDataStore();
+  const { secciones, seccionDe } = useSecciones();
+  const [seccion, setSeccion] = useState("Todas");
   const [query, setQuery] = useState("");
   const [risk, setRisk] = useState("Todos");
   const [studentsPage, setStudentsPage] = useState(1);
@@ -252,7 +256,8 @@ export function Students({
     .filter(
       (student) =>
         student.alumno.nombre.toLowerCase().includes(query.toLowerCase()) &&
-        (risk === "Todos" || student.riesgo.nivel === risk),
+        (risk === "Todos" || student.riesgo.nivel === risk) &&
+        (seccion === "Todas" || seccionDe(student.alumno.id_matricula) === seccion),
     )
     .sort((a, b) => b.riesgo.probabilidad - a.riesgo.probabilidad);
 
@@ -265,7 +270,14 @@ export function Students({
 
   return (
     <>
-      <PageHeading title="Estudiantes" subtitle="Listado de la sección 3.º de Secundaria – A" />
+      <PageHeading
+        title="Estudiantes"
+        subtitle={
+          seccion === "Todas"
+            ? "Listado de estudiantes de 3.º de Secundaria"
+            : `Listado de la sección ${etiquetaSeccion(seccion)}`
+        }
+      />
       <section className="card student-directory">
         <div className="directory-toolbar">
           <label className="search-box">
@@ -297,6 +309,25 @@ export function Students({
               <option>Alto</option>
             </select>
           </label>
+          <label className="filter-box">
+            <Icon name="filter" size={17} />
+            <span>Sección</span>
+            <select
+              value={seccion}
+              onChange={(event) => {
+                setSeccion(event.target.value);
+                setStudentsPage(1);
+              }}
+              aria-label="Filtrar por sección"
+            >
+              <option value="Todas">Todas</option>
+              {secciones.map((s) => (
+                <option key={s.codigo} value={s.codigo}>
+                  {s.letra} · {s.total_estudiantes} estudiantes
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="table-scroll">
           <table>
@@ -304,7 +335,7 @@ export function Students({
             <tbody>
               {paginatedStudents.map((student) => (
                 <tr key={student.alumno.id_matricula}>
-                  <td><div className="student-cell"><span className="student-avatar">{student.alumno.nombre.split(" ").map((part) => part[0]).join("")}</span><div><strong>{student.alumno.nombre}</strong><span>3.º Sec. · A</span></div></div></td>
+                  <td><div className="student-cell"><span className="student-avatar">{student.alumno.nombre.split(" ").map((part) => part[0]).join("")}</span><div><strong>{student.alumno.nombre}</strong><span>{etiquetaSeccion(seccionDe(student.alumno.id_matricula))}</span></div></div></td>
                   <td>{student.alumno.codigo}</td>
                   <td><strong className="average-value">{Math.round(student.alumno.promedios_bimestre.B1)} → {Math.round(student.alumno.promedios_bimestre.B2)}</strong></td>
                   <td>{student.alumno.inasistencias}</td>
@@ -370,6 +401,7 @@ export function Students({
 }
 
 function StudentBanner({ student }: { student: Estudiante }) {
+  const { seccionDe } = useSecciones();
   const initials = student.alumno.nombre
     .split(" ")
     .map((part) => part[0])
@@ -381,7 +413,7 @@ function StudentBanner({ student }: { student: Estudiante }) {
       <div>
         <p>Estudiante</p>
         <h2>{student.alumno.nombre}</h2>
-        <span>3.º de Secundaria – A · Código {student.alumno.codigo}</span>
+        <span>{etiquetaSeccion(seccionDe(student.alumno.id_matricula))} · Código {student.alumno.codigo}</span>
       </div>
       <div className="banner-risk">
         <span>Nivel actual</span>
@@ -539,6 +571,9 @@ export function AlertDetail({
   tutorName: string;
 }) {
   const { modelo } = useDataStore();
+  useEffect(() => {
+    void cargarHistorialEstudianteDesdeBackend(student.alumno.id_matricula);
+  }, [student.alumno.id_matricula]);
   const probabilityPercent = student.riesgo.probabilidad * 100;
   const factors = parsearFactoresRiesgo(student.riesgo.factores);
   const maxFactorValue = Math.max(...factors.map((factor) => Math.abs(factor.valor)), 0.01);
@@ -686,18 +721,127 @@ export function AlertDetail({
   );
 }
 
-function PerformanceChart({ student }: { student: Estudiante }) {
-  const sessionGrades = student.calificaciones ?? [];
-  const currentAverage =
-    sessionGrades.length > 0
-      ? Math.round(sessionGrades.reduce((total, grade) => total + grade.nota, 0) / sessionGrades.length)
-      : null;
-  const points = [
-    { label: "Bimestre 1", value: Math.round(student.alumno.promedios_bimestre.B1) },
-    { label: "Bimestre 2", value: Math.round(student.alumno.promedios_bimestre.B2) },
-    ...(currentAverage === null ? [] : [{ label: "Actual (en curso)", value: currentAverage }]),
+function PerformanceChart({
+  student,
+  bimestreActual,
+  selectedCourse,
+  selectedBimestre,
+}: {
+  student: Estudiante;
+  bimestreActual: number;
+  selectedCourse: string | null;
+  selectedBimestre: BimestreCodigo;
+}) {
+  const calificaciones = student.calificaciones ?? [];
+  const cursos = student.notas_por_curso.map((c) => c.curso);
+
+  if (selectedCourse) {
+    const res = calcularPromedioCursoPonderado(calificaciones, selectedCourse, selectedBimestre);
+    const items = [
+      { label: "Práctica (30%)", value: res.practica },
+      { label: "Simulacro (20%)", value: res.simulacro },
+      { label: "Examen (50%)", value: res.examen },
+      {
+        label: res.esParcial ? "Promedio parcial" : "Promedio",
+        value: res.promedio,
+        isAvg: true,
+      },
+    ];
+    const xPositions = [80, 225, 370, 515];
+
+    return (
+      <div className="course-detail-chart">
+        <div className="chart-wrap performance-chart" aria-label={`Evaluaciones de ${selectedCourse}`}>
+          <div className="chart-y">{[20, 15, 10, 5, 0].map((value) => <span key={value}>{value}</span>)}</div>
+          <svg viewBox="0 0 600 220" role="img">
+            <title>{selectedCourse} - {selectedBimestre}: Práctica, Simulacro, Examen y Promedio</title>
+            {[20, 15, 10, 5, 0].map((value) => {
+              const y = 175 - value * 7.5;
+              return <line key={value} x1="25" x2="575" y1={y} y2={y} className="grid-line" />;
+            })}
+            {items.map((item, idx) => {
+              const x = xPositions[idx];
+              if (item.value === null) {
+                return (
+                  <g key={item.label}>
+                    <line x1={x - 16} x2={x + 16} y1={175} y2={175} stroke="#cbd5e1" strokeWidth="4" strokeLinecap="round" />
+                    <text x={x} y={160} textAnchor="middle" className="axis-label">Sin nota</text>
+                    <text x={x} y="207" textAnchor="middle" className="axis-label">{item.label}</text>
+                  </g>
+                );
+              }
+              const y = 175 - item.value * 7.5;
+              const barHeight = Math.max(4, 175 - y);
+              const fill = item.isAvg
+                ? item.value < 11
+                  ? "#dc2626"
+                  : "#0f2e8a"
+                : item.value < 11
+                  ? "#f87171"
+                  : "#3b82f6";
+              return (
+                <g key={item.label}>
+                  <rect x={x - 22} y={y} width="44" height={barHeight} rx="6" fill={fill} />
+                  <text x={x} y={y - 10} textAnchor="middle" className="chart-value">
+                    {item.value}
+                  </text>
+                  <text x={x} y="207" textAnchor="middle" className="axis-label">{item.label}</text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+        <div className="course-eval-summary">
+          <div className="eval-pill"><span>Práctica (30%)</span><strong>{res.practica !== null ? res.practica : "Sin nota"}</strong></div>
+          <div className="eval-pill"><span>Simulacro (20%)</span><strong>{res.simulacro !== null ? res.simulacro : "Sin nota"}</strong></div>
+          <div className="eval-pill"><span>Examen (50%)</span><strong>{res.examen !== null ? res.examen : "Sin nota"}</strong></div>
+          <div className="eval-pill eval-pill-avg">
+            <span>{res.esParcial ? "Promedio parcial" : "Promedio del curso"}</span>
+            <strong>{res.promedio !== null ? res.promedio : "Pendiente"}</strong>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const g1 = calcularPromedioGeneral(calificaciones, cursos, "B1");
+  const g2 = calcularPromedioGeneral(calificaciones, cursos, "B2");
+  const g3 = calcularPromedioGeneral(calificaciones, cursos, "B3");
+  const g4 = calcularPromedioGeneral(calificaciones, cursos, "B4");
+
+  const points: Array<{ label: string; value: number; esParcial?: boolean }> = [
+    {
+      label: "Bimestre 1",
+      value: g1.promedio ?? Math.round(student.alumno.promedios_bimestre.B1 * 10) / 10,
+      esParcial: g1.esParcial,
+    },
+    {
+      label: "Bimestre 2",
+      value: g2.promedio ?? Math.round(student.alumno.promedios_bimestre.B2 * 10) / 10,
+      esParcial: g2.esParcial,
+    },
   ];
-  const xPositions = points.length === 2 ? [85, 515] : [60, 300, 540];
+  if (bimestreActual >= 3 && g3.promedio !== null) {
+    points.push({
+      label: bimestreActual === 3 ? "Bimestre 3 (actual)" : "Bimestre 3",
+      value: g3.promedio,
+      esParcial: g3.esParcial,
+    });
+  }
+  if (bimestreActual >= 4 && g4.promedio !== null) {
+    points.push({
+      label: "Bimestre 4 (actual)",
+      value: g4.promedio,
+      esParcial: g4.esParcial,
+    });
+  }
+
+  const xPositions =
+    points.length === 2
+      ? [110, 490]
+      : points.length === 3
+        ? [80, 300, 520]
+        : [70, 220, 380, 530];
   const chartPoints = points.map((point, index) => ({
     ...point,
     x: xPositions[index],
@@ -709,7 +853,7 @@ function PerformanceChart({ student }: { student: Estudiante }) {
     <div className="chart-wrap performance-chart" aria-label={`Rendimiento de ${student.alumno.nombre}`}>
       <div className="chart-y">{[20, 15, 10, 5, 0].map((value) => <span key={value}>{value}</span>)}</div>
       <svg viewBox="0 0 600 220" role="img">
-        <title>Promedios de Bimestre 1, Bimestre 2{currentAverage === null ? "" : " y Actual en curso"}</title>
+        <title>Promedios por bimestre</title>
         {[20, 15, 10, 5, 0].map((value) => {
           const y = 175 - value * 7.5;
           return <line key={value} x1="25" x2="575" y1={y} y2={y} className="grid-line" />;
@@ -719,7 +863,7 @@ function PerformanceChart({ student }: { student: Estudiante }) {
           <g key={point.label}>
             <circle cx={point.x} cy={point.y} r="6" className="chart-point" />
             <text x={point.x} y={point.y - 15} textAnchor="middle" className="chart-value">
-              {Math.round(point.value)}
+              {point.value}
             </text>
             <text x={point.x} y="207" textAnchor="middle" className="axis-label">{point.label}</text>
           </g>
@@ -848,6 +992,17 @@ export function History({
   openFollowUp: () => void;
   canCommunicate: boolean;
 }) {
+  const { bimestreActual } = useDataStore();
+  const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
+  const [courseBimestre, setCourseBimestre] = useState<BimestreCodigo>(() =>
+    bimestreACodigo(bimestreActual),
+  );
+
+  useEffect(() => {
+    setSelectedCourse(null);
+    void cargarHistorialEstudianteDesdeBackend(student.alumno.id_matricula);
+  }, [student.alumno.id_matricula]);
+
   const b1 = Math.round(student.alumno.promedios_bimestre.B1);
   const b2 = Math.round(student.alumno.promedios_bimestre.B2);
   const averageChange = b2 - b1;
@@ -901,24 +1056,92 @@ export function History({
       <section className="history-grid">
         <article className="card chart-card wide">
           <div className="card-header">
-            <div><p className="section-label">Rendimiento académico</p><h2>Promedio del Bimestre 1 al Bimestre 2</h2><span>{averageChange < 0 ? `El promedio bajó ${Math.abs(averageChange)} ${Math.abs(averageChange) === 1 ? "punto" : "puntos"} entre el Bimestre 1 y el Bimestre 2.` : averageChange > 0 ? `El promedio subió ${averageChange} ${averageChange === 1 ? "punto" : "puntos"} entre el Bimestre 1 y el Bimestre 2.` : "El promedio se mantuvo entre ambos bimestres."}</span></div>
-            <span className="trend-chip"><TrendIcon trend={calcularTendencia(b1, b2)} /> {calcularTendencia(b1, b2)}</span>
+            <div>
+              <p className="section-label">Rendimiento académico</p>
+              <h2>
+                {selectedCourse
+                  ? `Detalle de ${selectedCourse} (${courseBimestre})`
+                  : `Promedio del Bimestre 1 al Bimestre ${bimestreActual}`}
+              </h2>
+              <span>
+                {selectedCourse
+                  ? "Evaluaciones ponderadas: Práctica 30 %, Simulacro 20 %, Examen 50 %."
+                  : averageChange < 0
+                    ? `El promedio bajó ${Math.abs(averageChange)} ${Math.abs(averageChange) === 1 ? "punto" : "puntos"} entre el Bimestre 1 y el Bimestre 2.`
+                    : averageChange > 0
+                      ? `El promedio subió ${averageChange} ${averageChange === 1 ? "punto" : "puntos"} entre el Bimestre 1 y el Bimestre 2.`
+                      : "El promedio se mantuvo entre ambos bimestres."}
+              </span>
+            </div>
+            {selectedCourse ? (
+              <div className="course-chart-controls">
+                <select
+                  aria-label="Bimestre del curso"
+                  value={courseBimestre}
+                  onChange={(e) => setCourseBimestre(e.target.value as BimestreCodigo)}
+                >
+                  <option value="B1">Bimestre 1</option>
+                  <option value="B2">Bimestre 2</option>
+                  <option value="B3">Bimestre 3</option>
+                  {bimestreActual >= 4 && <option value="B4">Bimestre 4</option>}
+                </select>
+                <Button secondary onClick={() => setSelectedCourse(null)} icon="arrow">
+                  Vista general (todos los cursos)
+                </Button>
+              </div>
+            ) : (
+              <span className="trend-chip"><TrendIcon trend={calcularTendencia(b1, b2)} /> {calcularTendencia(b1, b2)}</span>
+            )}
           </div>
-          <PerformanceChart student={student} />
+          <PerformanceChart
+            student={student}
+            bimestreActual={bimestreActual}
+            selectedCourse={selectedCourse}
+            selectedBimestre={courseBimestre}
+          />
           <div className="course-table">
-            <div className="card-header"><div><h2>Promedio por curso</h2><p>Escala de 0 a 20. Menos de 11 se considera desaprobado.</p></div></div>
+            <div className="card-header">
+              <div>
+                <h2>Promedio por curso</h2>
+                <p>Escala de 0 a 20 (Práctica 30 % · Simulacro 20 % · Examen 50 %). Haz clic en un curso para ver sus evaluaciones.</p>
+              </div>
+            </div>
             <div className="table-scroll">
               <table>
-                <thead><tr><th>Curso</th><th title="Bimestre 1">Bim. 1</th><th title="Bimestre 2">Bim. 2</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Curso</th>
+                    <th title="Bimestre 1">Bim. 1</th>
+                    <th title="Bimestre 2">Bim. 2</th>
+                    <th title="Bimestre 3">Bim. 3</th>
+                    {bimestreActual >= 4 && <th title="Bimestre 4">Bim. 4</th>}
+                  </tr>
+                </thead>
                 <tbody>
                   {student.notas_por_curso.map((course) => {
-                    const notaB1 = Math.round(course.B1);
-                    const notaB2 = Math.round(course.B2);
+                    const isSelected = selectedCourse === course.curso;
+                    const renderCell = (nota: number | null | undefined, esParcial?: boolean) => {
+                      if (nota === null || nota === undefined) {
+                        return <td className="pending-grade">pendiente</td>;
+                      }
+                      return (
+                        <td className={nota < 11 ? "failing-grade" : ""}>
+                          {nota}
+                          {esParcial && <span className="partial-badge" title="Promedio parcial: faltan evaluaciones"> parcial</span>}
+                        </td>
+                      );
+                    };
                     return (
-                      <tr key={course.curso}>
+                      <tr
+                        key={course.curso}
+                        className={`course-row-clickable${isSelected ? " selected-course-row" : ""}`}
+                        onClick={() => setSelectedCourse(isSelected ? null : course.curso)}
+                      >
                         <td><strong>{course.curso}</strong></td>
-                        <td className={notaB1 < 11 ? "failing-grade" : ""}>{notaB1}</td>
-                        <td className={notaB2 < 11 ? "failing-grade" : ""}>{notaB2}</td>
+                        {renderCell(course.B1, course.esParcialB1)}
+                        {renderCell(course.B2, course.esParcialB2)}
+                        {renderCell(course.B3, course.esParcialB3)}
+                        {bimestreActual >= 4 && renderCell(course.B4, course.esParcialB4)}
                       </tr>
                     );
                   })}
@@ -926,6 +1149,29 @@ export function History({
               </table>
             </div>
           </div>
+          {(student.calificaciones?.length ?? 0) > 0 && (
+            <div className="course-table" style={{ marginTop: "1rem" }}>
+              <div className="card-header"><div><h2>Últimas evaluaciones</h2><p>Evaluaciones registradas en la base académica.</p></div></div>
+              <div className="table-scroll">
+                <table>
+                  <thead><tr><th>Fecha</th><th>Curso</th><th>Evaluación</th><th>Nota</th></tr></thead>
+                  <tbody>
+                    {[...(student.calificaciones ?? [])]
+                      .sort((a, b) => b.fecha.localeCompare(a.fecha))
+                      .slice(0, 8)
+                      .map((cal, idx) => (
+                        <tr key={`${cal.fecha}-${cal.curso}-${idx}`}>
+                          <td>{cal.fecha}</td>
+                          <td><strong>{cal.curso}</strong></td>
+                          <td>{cal.tipo_evaluacion} ({cal.bimestre})</td>
+                          <td className={cal.nota < 11 ? "failing-grade" : ""}><strong>{cal.nota}</strong></td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </article>
         <article className="card attendance-log">
           <div className="card-header">
