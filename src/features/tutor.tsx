@@ -391,6 +391,29 @@ function StudentBanner({ student }: { student: Estudiante }) {
   );
 }
 
+interface SolucionBackend {
+  nombre: AccionTutoria;
+  n_casos: number;
+  pct_mejoro: number;
+  variacion_media: number;
+  alcance: string;
+  recomendada: boolean;
+}
+
+interface AccionAplicadaBackend {
+  accion: string;
+  fecha: string;
+  mejoro_sim: boolean | null;
+}
+
+interface RiesgoSolucionBackendResponse {
+  id_matricula: number;
+  motivo_principal: Motivo | null;
+  factores: { factor: string; motivo: Motivo; peso: number }[];
+  soluciones: SolucionBackend[];
+  ya_aplicadas: AccionAplicadaBackend[];
+}
+
 function SuggestedActions({
   student,
   readOnly,
@@ -408,8 +431,47 @@ function SuggestedActions({
   const [destination, setDestination] = useState<DerivacionTutoria>("Ninguna");
   const [note, setNote] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const visibleProfiles = getStudentReasons(student);
-  const [activeProfile, setActiveProfile] = useState(visibleProfiles[0]);
+
+  const [apiData, setApiData] = useState<RiesgoSolucionBackendResponse | null>(null);
+  const [cargandoApi, setCargandoApi] = useState(true);
+
+  useEffect(() => {
+    let activo = true;
+    setCargandoApi(true);
+    const idNum = Number(String(student.alumno.id_matricula).replace(/\D/g, "")) || 1;
+
+    fetch(`http://127.0.0.1:8000/estudiantes/${idNum}/riesgo-solucion`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: RiesgoSolucionBackendResponse | null) => {
+        if (activo) {
+          setApiData(data);
+          setCargandoApi(false);
+        }
+      })
+      .catch(() => {
+        if (activo) {
+          setApiData(null);
+          setCargandoApi(false);
+        }
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, [student.alumno.id_matricula]);
+
+  const apiMotivos = apiData?.factores
+    ? Array.from(new Set(apiData.factores.map((f) => f.motivo)))
+    : [];
+  const visibleProfiles =
+    apiMotivos.length > 0 ? apiMotivos : getStudentReasons(student);
+  const [activeProfile, setActiveProfile] = useState<Motivo | undefined>(visibleProfiles[0]);
+
+  useEffect(() => {
+    if (!activeProfile || !visibleProfiles.includes(activeProfile)) {
+      setActiveProfile(visibleProfiles[0]);
+    }
+  }, [activeProfile, visibleProfiles]);
 
   const saveSuggestedAction = (event: FormEvent) => {
     event.preventDefault();
@@ -427,95 +489,333 @@ function SuggestedActions({
     setSelectedPattern(null);
   };
 
+  const today = new Date().toISOString().slice(0, 10);
+  const usandoBackend = Boolean(apiData && apiData.soluciones && apiData.soluciones.length > 0);
+
+  const renderBadgeAplicada = (tutoring: { fecha: string; mejoro_sim: boolean | null }, key: string) => {
+    const esHoy = tutoring.fecha === today && !tutoring.mejoro_sim;
+    const clase = tutoring.mejoro_sim || esHoy ? "previous-action-success" : "previous-action-error";
+    const icono = tutoring.mejoro_sim || esHoy ? "check" : "close";
+    const textoResultado = tutoring.mejoro_sim
+      ? "Mejoró"
+      : esHoy
+        ? "Registrada hoy (en seguimiento)"
+        : "No mejoró";
+
+    return (
+      <div className={`previous-action ${clase}`} key={key}>
+        <Icon name={icono} size={14} />
+        Ya aplicada el {tutoring.fecha} · Resultado: {textoResultado}
+      </div>
+    );
+  };
+
   return (
     <article className="card suggested-actions solution-feature" id="solucion-recomendada">
       <p className="section-label">Solución recomendada</p>
-      <h2>Para {student.alumno.nombre}, con motivo principal: {visibleProfiles[0] ?? "Por revisar"}</h2>
-      <p className="patterns-warning">Sugerencia basada en casos similares del colegio (datos de demostración). Es una guía, no una garantía; el tutor decide.</p>
+      <h2>
+        Para {student.alumno.nombre}, con motivo principal:{" "}
+        {apiData?.motivo_principal ?? visibleProfiles[0] ?? "Por revisar"}
+      </h2>
+      <p className="patterns-warning">
+        {usandoBackend
+          ? "Sugerencia calculada en tiempo real desde casos históricos de bd_piloto.db. Es una guía, no una garantía; el tutor decide."
+          : "Sugerencia basada en casos similares del colegio (datos de demostración). Es una guía, no una garantía; el tutor decide."}
+      </p>
 
       {visibleProfiles.length > 1 && (
-        <div className="solution-tabs" role="tablist">
+        <div className="solution-tabs" role="tablist" aria-label="Motivos de tutoría">
           {visibleProfiles.map((profile, index) => (
-            <button type="button" role="tab" aria-selected={activeProfile === profile} className={activeProfile === profile ? "active" : ""} onClick={() => setActiveProfile(profile)} key={profile}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeProfile === profile}
+              className={activeProfile === profile ? "active" : ""}
+              onClick={() => setActiveProfile(profile)}
+              key={profile}
+            >
               {index === 0 ? "Motivo principal" : "Motivo secundario"}: {profile}
             </button>
           ))}
         </div>
       )}
 
-      {activeProfile ? (() => {
+      {cargandoApi ? (
+        <p className="insufficient-patterns">Calculando soluciones efectivas en bd_piloto.db...</p>
+      ) : activeProfile ? (() => {
+        if (usandoBackend && apiData && activeProfile === apiData.motivo_principal) {
+          const recommended =
+            apiData.soluciones.find((s) => s.recomendada) ?? apiData.soluciones[0];
+          const alternatives = apiData.soluciones.filter(
+            (s) => s.nombre !== recommended?.nombre
+          );
+
+          if (!recommended) {
+            return (
+              <p className="insufficient-patterns">
+                Aún no hay suficiente información para sugerir una acción en este motivo.
+              </p>
+            );
+          }
+
+          const appliedRecommended = apiData.ya_aplicadas.filter(
+            (a) => a.accion === recommended.nombre && a.fecha <= today
+          );
+
+          return (
+            <section className="pattern-profile">
+              <div className="recommended-action">
+                <span className="recommended-chip">Recomendada</span>
+                <small>Acción recomendada</small>
+                <strong>{recommended.nombre}</strong>
+                <p>
+                  En casos similares, esta acción ayudó a mejorar el promedio en el{" "}
+                  {Math.round(recommended.pct_mejoro)} % de los casos ({recommended.n_casos} casos
+                  {recommended.alcance === "colegio" ? " · todo el colegio" : " · 3.º Sec."}).
+                </p>
+                {appliedRecommended.map((tutoring, index) =>
+                  renderBadgeAplicada(tutoring, `${tutoring.fecha}-${index}`)
+                )}
+                {!readOnly && (
+                  <Button
+                    onClick={() =>
+                      setSelectedPattern({ reason: activeProfile, action: recommended.nombre })
+                    }
+                  >
+                    Aplicar esta acción
+                  </Button>
+                )}
+              </div>
+
+              {alternatives.length > 0 && <h3>Otras opciones</h3>}
+              {alternatives.map((action) => {
+                const applied = apiData.ya_aplicadas.filter(
+                  (a) => a.accion === action.nombre && a.fecha <= today
+                );
+                return (
+                  <div className="pattern-action" key={action.nombre}>
+                    <div className="pattern-action-heading">
+                      <strong>{action.nombre}</strong>
+                      <span>{Math.round(action.pct_mejoro)} %</span>
+                    </div>
+                    <div
+                      className="pattern-bar"
+                      role="progressbar"
+                      aria-label={`${action.nombre}: ${Math.round(action.pct_mejoro)} % de casos con mejora`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(action.pct_mejoro)}
+                    >
+                      <span style={{ width: `${Math.round(action.pct_mejoro)}%` }} />
+                    </div>
+                    <div className="pattern-metrics">
+                      <span>
+                        {action.n_casos} casos
+                        {action.alcance === "colegio" ? " · todo el colegio" : " · 3.º Sec."}
+                      </span>
+                      <span>
+                        {action.variacion_media >= 0 ? "+" : ""}
+                        {action.variacion_media.toFixed(2)} puntos de promedio
+                      </span>
+                    </div>
+                    {applied.map((tutoring, index) =>
+                      renderBadgeAplicada(tutoring, `${tutoring.fecha}-${index}`)
+                    )}
+                    {!readOnly && (
+                      <Button
+                        secondary
+                        onClick={() => {
+                          setSelectedPattern({ reason: activeProfile, action: action.nombre });
+                          setConfirmation("");
+                        }}
+                      >
+                        Elegir otra acción
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </section>
+          );
+        }
+
         const actions = getAccionesSugeridas(activeProfile, student.tutorias);
         const recommended = actions.find((action) => action.aplicaciones.length === 0) ?? actions[0];
         const alternatives = actions.filter((action) => action.nombre !== recommended?.nombre);
-        if (!recommended) return <p className="insufficient-patterns">Aún no hay suficiente información para sugerir una acción en este motivo.</p>;
+        if (!recommended) {
+          return (
+            <p className="insufficient-patterns">
+              Aún no hay suficiente información para sugerir una acción en este motivo.
+            </p>
+          );
+        }
+
+        const appliedResults = recommended.aplicaciones
+          .filter((tutoring) => tutoring.fecha <= today)
+          .sort((a, b) => b.fecha.localeCompare(a.fecha));
+
         return (
           <section className="pattern-profile">
             <div className="recommended-action">
               <span className="recommended-chip">Recomendada</span>
               <small>Acción recomendada</small>
               <strong>{recommended.nombre}</strong>
-              <p>En casos similares, esta acción ayudó a mejorar el promedio en el {Math.round(recommended.pct_mejoro)} % de los casos ({recommended.n_casos} casos).</p>
-              {recommended.aplicaciones.map((tutoring, index) => (
-                <div className="previous-action" key={`${tutoring.fecha}-${index}`}>
-                  <Icon name="check" size={14} /> Ya aplicada el {tutoring.fecha} · Resultado: {tutoring.mejoro_sim ? "Mejoró" : "No mejoró"}
-                </div>
-              ))}
-              {!readOnly && <Button onClick={() => setSelectedPattern({ reason: activeProfile, action: recommended.nombre })}>Aplicar esta acción</Button>}
+              <p>
+                En casos similares, esta acción ayudó a mejorar el promedio en el{" "}
+                {Math.round(recommended.pct_mejoro)} % de los casos ({recommended.n_casos} casos
+                {recommended.n_casos < 15 ? " · todo el colegio" : ""}).
+              </p>
+              {appliedResults.map((tutoring, index) =>
+                renderBadgeAplicada(tutoring, `${tutoring.fecha}-${index}`)
+              )}
+              {!readOnly && (
+                <Button
+                  onClick={() =>
+                    setSelectedPattern({ reason: activeProfile, action: recommended.nombre })
+                  }
+                >
+                  Aplicar esta acción
+                </Button>
+              )}
             </div>
+
             {alternatives.length > 0 && <h3>Otras opciones</h3>}
-            {alternatives.map((action) => (
-              <div className="pattern-action" key={action.nombre}>
+            {alternatives.map((action) => {
+              const applied = action.aplicaciones
+                .filter((tutoring) => tutoring.fecha <= today)
+                .sort((a, b) => b.fecha.localeCompare(a.fecha));
+              return (
+                <div className="pattern-action" key={action.nombre}>
                   <div className="pattern-action-heading">
                     <strong>{action.nombre}</strong>
                     <span>{Math.round(action.pct_mejoro)} %</span>
                   </div>
-                  <div className="pattern-bar" aria-label={`${Math.round(action.pct_mejoro)} % de casos con mejora`}>
+                  <div
+                    className="pattern-bar"
+                    role="progressbar"
+                    aria-label={`${action.nombre}: ${Math.round(action.pct_mejoro)} % de casos con mejora`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(action.pct_mejoro)}
+                  >
                     <span style={{ width: `${Math.round(action.pct_mejoro)}%` }} />
                   </div>
                   <div className="pattern-metrics">
-                    <span>{action.n_casos} casos</span>
-                    <span>{action.variacion_media > 0 ? "+" : ""}{Math.round(action.variacion_media)} puntos de promedio</span>
+                    <span>
+                      {action.n_casos} casos
+                      {action.n_casos < 15 ? " · todo el colegio" : ""}
+                    </span>
+                    <span>
+                      {action.variacion_media >= 0 ? "+" : ""}
+                      {action.variacion_media.toFixed(1)} puntos de promedio
+                    </span>
                   </div>
-                  {action.aplicaciones.map((tutoring, index) => (
-                    <div className="previous-action" key={`${tutoring.fecha}-${index}`}>
-                      <Icon name="check" size={14} />
-                      Ya aplicada el {tutoring.fecha} · Resultado: {tutoring.mejoro_sim ? "Mejoró" : "No mejoró"}
-                    </div>
-                  ))}
-                  {!readOnly && <Button
-                    secondary
-                    onClick={() => {
-                      setSelectedPattern({ reason: activeProfile, action: action.nombre });
-                      setConfirmation("");
-                    }}
-                  >
-                    Elegir otra acción
-                  </Button>}
+                  {applied.map((tutoring, index) =>
+                    renderBadgeAplicada(tutoring, `${tutoring.fecha}-${index}`)
+                  )}
+                  {!readOnly && (
+                    <Button
+                      secondary
+                      onClick={() => {
+                        setSelectedPattern({ reason: activeProfile, action: action.nombre });
+                        setConfirmation("");
+                      }}
+                    >
+                      Elegir otra acción
+                    </Button>
+                  )}
                 </div>
-            ))}
+              );
+            })}
           </section>
         );
-      })() : <p className="insufficient-patterns">Aún no hay suficiente información para sugerir una acción en este motivo.</p>}
+      })() : (
+        <p className="insufficient-patterns">
+          Aún no hay suficiente información para sugerir una acción en este motivo.
+        </p>
+      )}
 
-      {confirmation && <div className="pattern-confirmation" role="status"><Icon name="check" size={16} />{confirmation}</div>}
+      {confirmation && (
+        <div className="pattern-confirmation" role="status">
+          <Icon name="check" size={16} />
+          {confirmation}
+        </div>
+      )}
       <section className="patterns-explainer">
         <h3>¿De dónde sale esta sugerencia?</h3>
-        <p>Se agrupan las tutorías por motivo y acción y se calcula en qué proporción mejoró el promedio en el bimestre siguiente.</p>
+        <p>
+          Se agrupan las tutorías por motivo y acción y se calcula en qué proporción mejoró el
+          promedio en el bimestre siguiente.
+        </p>
       </section>
 
       {selectedPattern && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setSelectedPattern(null)}>
-          <form className="followup-modal pattern-form" onSubmit={saveSuggestedAction} onMouseDown={(event) => event.stopPropagation()}>
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setSelectedPattern(null)}
+        >
+          <form
+            className="followup-modal pattern-form"
+            onSubmit={saveSuggestedAction}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
             <div className="modal-header">
-              <div><p className="section-label">Registrar seguimiento</p><h2>Aplicar acción sugerida</h2></div>
-              <button type="button" className="modal-close" onClick={() => setSelectedPattern(null)} aria-label="Cerrar formulario"><Icon name="close" /></button>
+              <div>
+                <p className="section-label">Registrar seguimiento</p>
+                <h2>Aplicar acción sugerida</h2>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setSelectedPattern(null)}
+                aria-label="Cerrar formulario"
+              >
+                <Icon name="close" />
+              </button>
             </div>
-            <label className="form-field"><span>Motivo</span><input value={selectedPattern.reason} readOnly /></label>
-            <label className="form-field"><span>Acción</span><input value={selectedPattern.action} readOnly /></label>
-            <label className="form-field"><span>Fecha</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label>
-            <label className="form-field"><span>Derivación</span><select value={destination} onChange={(event) => setDestination(event.target.value as DerivacionTutoria)}><option value="Ninguna">Ninguna</option><option value="Psicologia">Psicología</option><option value="Coordinacion">Coordinación</option></select></label>
-            <label className="form-field"><span>Nota opcional</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Acuerdos o aspectos por continuar." /></label>
-            <div className="modal-actions"><Button secondary onClick={() => setSelectedPattern(null)}>Cancelar</Button><Button type="submit">Guardar seguimiento</Button></div>
+            <label className="form-field">
+              <span>Motivo</span>
+              <input value={selectedPattern.reason} readOnly />
+            </label>
+            <label className="form-field">
+              <span>Acción</span>
+              <input value={selectedPattern.action} readOnly />
+            </label>
+            <label className="form-field">
+              <span>Fecha</span>
+              <input
+                type="date"
+                value={date}
+                onChange={(event) => setDate(event.target.value)}
+                required
+              />
+            </label>
+            <label className="form-field">
+              <span>Derivación</span>
+              <select
+                value={destination}
+                onChange={(event) => setDestination(event.target.value as DerivacionTutoria)}
+              >
+                <option value="Ninguna">Ninguna</option>
+                <option value="Psicologia">Psicología</option>
+                <option value="Coordinacion">Coordinación</option>
+              </select>
+            </label>
+            <label className="form-field">
+              <span>Nota opcional</span>
+              <textarea
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="Acuerdos o aspectos por continuar."
+              />
+            </label>
+            <div className="modal-actions">
+              <Button secondary onClick={() => setSelectedPattern(null)}>
+                Cancelar
+              </Button>
+              <Button type="submit">Guardar seguimiento</Button>
+            </div>
           </form>
         </div>
       )}
@@ -640,7 +940,7 @@ export function AlertDetail({
           </article>
           <div className="human-note">
             <Icon name="info" />
-            <p><strong>Revisión humana necesaria.</strong> Esta alerta es un apoyo para la revisión del tutor. No constituye una sanción ni un diagnóstico definitivo. Toda decisión requiere revisión humana.</p>
+            <p><strong>Revisión humana necesaria.</strong> Esta alerta es un apoyo para la revisión del tutor. No constituye un diagnóstico definitivo ni determina consecuencias por sí sola. Toda decisión requiere revisión humana.</p>
           </div>
         </div>
         <aside className="alert-side">
@@ -657,18 +957,36 @@ export function AlertDetail({
             <h2>¿Por qué se generó esta alerta?</h2>
             <p>Información que tuvo mayor influencia en el semáforo.</p>
             <div className="factor-list">
-              {factors.map((factor) => (
-                <div className="factor-row" key={factor.familia}>
-                  <div className="factor-copy">
-                    <strong>{displayFactorFamily(factor.familia)}</strong>
-                    <span>Peso en la alerta: {Math.abs(factor.valor) / maxFactorValue >= 0.67 ? "Alto" : Math.abs(factor.valor) / maxFactorValue >= 0.34 ? "Medio" : "Bajo"}</span>
-                  </div>
-                  <div className="factor-bar" aria-hidden="true">
-                    <span style={{ width: `${(Math.abs(factor.valor) / maxFactorValue) * 100}%` }} />
-                  </div>
-                </div>
-              ))}
+              {[...factors]
+                .sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor))
+                .map((factor, index) => {
+                  const weightRatio = Math.abs(factor.valor) / maxFactorValue;
+                  const weightText = weightRatio >= 0.67 ? "Alto" : weightRatio >= 0.34 ? "Medio" : "Bajo";
+                  return (
+                    <div className="factor-row" key={`${factor.familia}-${index}`}>
+                      <div className="factor-copy">
+                        <div>
+                          <strong>{displayFactorFamily(factor.familia)}</strong>
+                          {index === 0 && <span className="factor-main-label">Motivo principal</span>}
+                        </div>
+                        <span>Peso en la alerta: {weightText}</span>
+                      </div>
+                      <div
+                        className="factor-bar"
+                        role="progressbar"
+                        aria-label={`${displayFactorFamily(factor.familia)}: peso ${weightText}`}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(weightRatio * 100)}
+                      >
+                        <span style={{ width: `${weightRatio * 100}%` }} />
+                      </div>
+                      <small className="factor-points">{factor.valor >= 0 ? "+" : ""}{factor.valor.toFixed(1)} pts</small>
+                    </div>
+                  );
+                })}
             </div>
+            <p className="factor-support-note">Señales compatibles con riesgo académico. Es un apoyo para el tutor, no determina una causa ni una consecuencia por sí sola.</p>
           </article>
           <SuggestedActions student={student} readOnly={!canApply} tutorName={tutorName} />
         </aside>
@@ -819,7 +1137,7 @@ function DiagnosticoIA({ idMatricula }: { idMatricula: string }) {
       <div className="evolution-summary" style={{ marginBottom: "1rem" }}>
         <div className="summary-mark"><Icon name="model" /></div>
         <div>
-          <p className="section-label">Factores ocultos (distancia, familia, entorno)</p>
+          <p className="section-label">Contexto familiar y entorno del estudiante</p>
           <p>{iaData.analisis_factores_ocultos}</p>
         </div>
       </div>
@@ -881,11 +1199,11 @@ export function History({
       title: observation.tipo,
       details: observation.deriva_a_tutor ? "Derivada al tutor" : "Sin derivación al tutor",
     })),
-    ...student.derivaciones.map((derivation) => ({
-      date: derivation.fecha,
+    ...student.derivaciones.map((derivacion) => ({
+      date: derivacion.fecha,
       type: "Derivación docente",
-      title: derivation.motivo,
-      details: `${derivation.docente} · ${derivation.estado} · ${derivation.accion_tutor}${derivation.tutor ? ` · Tutor: ${derivation.tutor}` : ""}`,
+      title: derivacion.motivo,
+      details: `${derivacion.docente} · ${derivacion.estado} · ${derivacion.accion_tutor}${derivacion.tutor ? ` · Tutor: ${derivacion.tutor}` : ""}`,
     })),
   ].sort((a, b) => b.date.localeCompare(a.date));
 

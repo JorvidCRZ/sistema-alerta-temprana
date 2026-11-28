@@ -625,3 +625,61 @@ footer { position: relative; z-index: 6; padding: 17px 36px 28px; color: #7d8498
   .evidence-form { grid-template-columns: 1fr; }
   .full-field { grid-column: 1; }
 }
+
+/* AlertDetail: tarjetas oscuras y estados accesibles */
+.alert-layout .factors-card,
+.alert-layout .suggested-actions {
+  color: #f5f7ff;
+  border-color: #2a2f3a;
+  background: #171a21;
+}
+.alert-layout .factors-card > p,
+.alert-layout .suggested-actions > h2,
+.pattern-profile > h3,
+.patterns-explainer h3 { color: #f5f7ff; }
+.factor-list { border-top-color: #2a2f3a; }
+.factor-row { border-bottom-color: #2a2f3a; }
+.factor-copy { align-items: flex-start; }
+.factor-copy strong { color: #f5f7ff; }
+.factor-copy > div { display: flex; flex-direction: column; gap: 4px; }
+.factor-copy > span { color: #aab4ff; }
+.factor-main-label { width: fit-content; color: #cbd1ff; font-size: 8px; font-weight: 800; }
+.factor-bar { background: #292e38; }
+.factor-bar span { background: #6d7cff; }
+.factor-points { margin-top: 6px; display: block; color: #d2d7e4; font-size: 9px; text-align: right; }
+.factor-support-note { margin: 12px 0 0; padding-top: 11px; border-top: 1px solid #2a2f3a; color: #b9c0d0; font-size: 9px; line-height: 1.55; }
+.alert-layout .patterns-warning,
+.alert-layout .patterns-explainer {
+  color: #c2c7d4;
+  border-color: #2a2f3a;
+  background: #20232b;
+}
+.solution-tabs button { color: #c5cad8; border-color: #3a4050; background: #20232b; }
+.solution-tabs button.active { color: #dfe3ff; border-color: #6d7cff; background: #29315d; }
+.recommended-action {
+  border: 1px solid #3d4f9a;
+  background: #1d2a66;
+}
+.recommended-action > small,
+.recommended-action > p { color: #d8defa; }
+.recommended-action > strong { color: #ffffff; }
+.recommended-chip { color: #ffffff; background: #6677eb; }
+.pattern-action { border-top-color: #2a2f3a; }
+.pattern-action-heading strong { color: #f5f7ff; }
+.pattern-action-heading span { color: #aab4ff; }
+.pattern-bar { background: #292e38; }
+.pattern-bar span { background: #6d7cff; }
+.pattern-metrics { color: #aeb5c5; }
+.previous-action-success { color: #9ee7bb; background: #173829; }
+.previous-action-error { color: #ffaaa6; background: #402326; }
+.insufficient-patterns { color: #b9c0d0; }
+.pattern-confirmation { color: #9ee7bb; background: #173829; }
+.pattern-form { background: #171a21; color: #f5f7ff; }
+.pattern-form .modal-header h2,
+.pattern-form .modal-header .section-label { color: #f5f7ff; }
+.pattern-form .modal-close { color: #d2d7e4; border-color: #343944; background: #20232b; }
+.pattern-form .form-field > span { color: #b9c0d0; }
+.pattern-form .form-field input,
+.pattern-form .form-field select,
+.pattern-form .form-field textarea { color: #f5f7ff; border-color: #343944; background: #20232b; }
+.pattern-form .form-field input[readonly] { color: #d2d7e4; background: #292d36; }
