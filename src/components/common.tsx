@@ -169,17 +169,20 @@ export function Button({
   secondary = false,
   icon,
   type = "button",
+  disabled = false,
 }: {
   children: ReactNode;
   onClick?: () => void;
   secondary?: boolean;
   icon?: IconName;
   type?: "button" | "submit";
+  disabled?: boolean;
 }) {
   return (
     <button
       type={type}
       onClick={onClick}
+      disabled={disabled}
       className={secondary ? "button button-secondary" : "button button-primary"}
     >
       {icon && <Icon name={icon} size={17} />}
@@ -251,7 +254,7 @@ export function Sidebar({
       <div className="logo-wrap">
         <img src={logo} alt="Saco Oliveros" className="logo" />
       </div>
-      <div className="school-label">Portal del tutor</div>
+      <div className="school-label"></div>
       <nav aria-label="Navegación principal" className="nav-list">
         {navItems.map((item) => {
           const active = item.view === view;
@@ -307,7 +310,7 @@ export function Header({
         <p className="system-kicker">Riesgo académico</p>
       </div>
       <div className="header-actions">
-        <div className="class-chip">3.º Secundaria · A</div>
+        <div className="class-chip">3.º Secundaria</div>
         <button
           type="button"
           className="icon-button"
